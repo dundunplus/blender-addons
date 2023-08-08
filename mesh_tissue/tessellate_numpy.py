@@ -1780,7 +1780,7 @@ class tissue_update_tessellate_deps(Operator):
     bl_idname = "object.tissue_update_tessellate_deps"
     bl_label = "Tissue Refresh"
     bl_description = ("Fast update the tessellated mesh according to base and "
-                      "component changes.")
+                      "component changes")
     bl_options = {'REGISTER', 'UNDO'}
 
     go = False
@@ -2253,7 +2253,10 @@ class tissue_update_tessellate(Operator):
             use_bmesh = not (bool_shapekeys and fill_mode == 'PATCH' and component_mode != 'OBJECT')
             merge_components(new_ob, ob.tissue_tessellate, use_bmesh)
 
-        if bool_smooth: bpy.ops.object.shade_smooth()
+        if bool_smooth:
+            bpy.ops.object.shade_smooth()
+        else:
+            bpy.ops.object.shade_flat()
 
         for mesh in bpy.data.meshes:
             if not mesh.users: bpy.data.meshes.remove(mesh)

@@ -3,15 +3,13 @@
 
 import numpy as np
 from mathutils import Vector
-
-from . import gltf2_blender_export_keys
+from ...blender.com.gltf2_blender_data_path import get_sk_exported
 from ...io.com.gltf2_io_debug import print_console
 from ...io.com.gltf2_io_constants import NORMALS_ROUNDING_DIGIT
-from io_scene_gltf2.blender.exp import gltf2_blender_gather_skins
-from io_scene_gltf2.io.com import gltf2_io_constants
-from io_scene_gltf2.blender.com import gltf2_blender_conversion
-from io_scene_gltf2.io.exp.gltf2_io_user_extensions import export_user_extensions
-
+from ...io.exp.gltf2_io_user_extensions import export_user_extensions
+from ...io.com import gltf2_io_constants
+from ..com import gltf2_blender_conversion
+from . import gltf2_blender_gather_skins
 
 def extract_primitives(blender_mesh, uuid_for_skined_data, blender_vertex_groups, modifiers, export_settings):
     """Extract primitives from a mesh."""
@@ -60,12 +58,12 @@ class PrimitiveCreator:
         if self.uuid_for_skined_data:
             self.blender_object = self.export_settings['vtree'].nodes[self.uuid_for_skined_data].blender_object
 
-        self.use_normals = self.export_settings[gltf2_blender_export_keys.NORMALS]
+        self.use_normals = self.export_settings['gltf_normals']
         if self.use_normals:
             self.blender_mesh.calc_normals_split()
 
         self.use_tangents = False
-        if self.use_normals and self.export_settings[gltf2_blender_export_keys.TANGENTS]:
+        if self.use_normals and self.export_settings['gltf_tangents']:
             if self.blender_mesh.uv_layers.active and len(self.blender_mesh.uv_layers) > 0:
                 try:
                     self.blender_mesh.calc_tangents()
@@ -74,21 +72,21 @@ class PrimitiveCreator:
                     print_console('WARNING', 'Could not calculate tangents. Please try to triangulate the mesh first.')
 
         self.tex_coord_max = 0
-        if self.export_settings[gltf2_blender_export_keys.TEX_COORDS]:
+        if self.export_settings['gltf_texcoords']:
             if self.blender_mesh.uv_layers.active:
                 self.tex_coord_max = len(self.blender_mesh.uv_layers)
 
-        self.use_morph_normals = self.use_normals and self.export_settings[gltf2_blender_export_keys.MORPH_NORMAL]
-        self.use_morph_tangents = self.use_morph_normals and self.use_tangents and self.export_settings[gltf2_blender_export_keys.MORPH_TANGENT]
+        self.use_morph_normals = self.use_normals and self.export_settings['gltf_morph_normal']
+        self.use_morph_tangents = self.use_morph_normals and self.use_tangents and self.export_settings['gltf_morph_tangent']
 
-        self.use_materials = self.export_settings[gltf2_blender_export_keys.MATERIALS]
+        self.use_materials = self.export_settings['gltf_materials']
 
         self.blender_attributes = []
 
         # Check if we have to export skin
         self.armature = None
         self.skin = None
-        if self.blender_vertex_groups and self.export_settings[gltf2_blender_export_keys.SKINS]:
+        if self.export_settings['gltf_skins']:
             if self.modifiers is not None:
                 modifiers_dict = {m.type: m for m in self.modifiers}
                 if "ARMATURE" in modifiers_dict:
@@ -113,12 +111,9 @@ class PrimitiveCreator:
                     self.armature = None
 
         self.key_blocks = []
-        if self.blender_mesh.shape_keys and self.export_settings[gltf2_blender_export_keys.MORPH]:
-            self.key_blocks = [
-                key_block
-                for key_block in self.blender_mesh.shape_keys.key_blocks
-                if not (key_block == key_block.relative_key or key_block.mute)
-            ]
+        # List of SK that are going to be exported, actually
+        if self.blender_mesh.shape_keys and self.export_settings['gltf_morph']:
+            self.key_blocks = get_sk_exported(self.blender_mesh.shape_keys.key_blocks)
 
         # Fetch vert positions and bone data (joint,weights)
 
@@ -167,10 +162,16 @@ class PrimitiveCreator:
             if self.blender_mesh.color_attributes.find(blender_attribute.name) == self.blender_mesh.color_attributes.render_color_index \
                 and self.blender_mesh.color_attributes.render_color_index != -1:
 
-                if self.export_settings[gltf2_blender_export_keys.COLORS] is False:
+                if self.export_settings['gltf_colors'] is False:
                     continue
                 attr['gltf_attribute_name'] = 'COLOR_0'
                 attr['get'] = self.get_function()
+
+                # Seems we sometime can have name collision about attributes
+                # Avoid crash and ignoring one of duplicated attribute name
+                if 'COLOR_0' in [a['gltf_attribute_name'] for a in self.blender_attributes]:
+                    print_console('WARNING', 'Attribute (vertex color) collision name: ' + blender_attribute.name + ", ignoring one of them")
+                    continue
 
             else:
                 # Custom attributes
@@ -189,6 +190,12 @@ class PrimitiveCreator:
                 attr['gltf_attribute_name'] = keep_attribute.attr_name.upper()
                 attr['get'] = self.get_function()
 
+                # Seems we sometime can have name collision about attributes
+                # Avoid crash and ignoring one of duplicated attribute name
+                if attr['gltf_attribute_name'] in [a['gltf_attribute_name'] for a in self.blender_attributes]:
+                    print_console('WARNING', 'Attribute collision name: ' + blender_attribute.name + ", ignoring one of them")
+                    continue
+
             self.blender_attributes.append(attr)
 
         # Manage POSITION
@@ -200,15 +207,6 @@ class PrimitiveCreator:
         attr['skip_getting_to_dots'] = True
         self.blender_attributes.append(attr)
 
-        # Manage uvs TEX_COORD_x
-        for tex_coord_i in range(self.tex_coord_max):
-            attr = {}
-            attr['blender_data_type'] = 'FLOAT2'
-            attr['blender_domain'] = 'CORNER'
-            attr['gltf_attribute_name'] = 'TEXCOORD_' + str(tex_coord_i)
-            attr['get'] = self.get_function()
-            self.blender_attributes.append(attr)
-
         # Manage NORMALS
         if self.use_normals:
             attr = {}
@@ -216,6 +214,15 @@ class PrimitiveCreator:
             attr['blender_domain'] = 'CORNER'
             attr['gltf_attribute_name'] = 'NORMAL'
             attr['gltf_attribute_name_morph'] = 'MORPH_NORMAL_'
+            attr['get'] = self.get_function()
+            self.blender_attributes.append(attr)
+
+        # Manage uvs TEX_COORD_x
+        for tex_coord_i in range(self.tex_coord_max):
+            attr = {}
+            attr['blender_data_type'] = 'FLOAT2'
+            attr['blender_domain'] = 'CORNER'
+            attr['gltf_attribute_name'] = 'TEXCOORD_' + str(tex_coord_i)
             attr['get'] = self.get_function()
             self.blender_attributes.append(attr)
 
@@ -271,6 +278,13 @@ class PrimitiveCreator:
         for attr in self.blender_attributes:
             attr['len'] = gltf2_blender_conversion.get_data_length(attr['blender_data_type'])
             attr['type'] = gltf2_blender_conversion.get_numpy_type(attr['blender_data_type'])
+
+
+        # Now we have all attribtues, we can change order if we want
+        # Note that the glTF specification doesn't say anything about order
+        # Attributes are defined only by name
+        # But if user want it in a particular order, he can use this hook to perform it
+        export_user_extensions('gather_attributes_change', self.export_settings, self.blender_attributes)
 
     def create_dots_data_structure(self):
         # Now that we get all attributes that are going to be exported, create numpy array that will store them
@@ -541,7 +555,7 @@ class PrimitiveCreator:
         for vs in self.morph_locs:
             vs -= self.locs
 
-        if self.export_settings[gltf2_blender_export_keys.YUP]:
+        if self.export_settings['gltf_yup']:
             PrimitiveCreator.zup2yup(self.locs)
             for vs in self.morph_locs:
                 PrimitiveCreator.zup2yup(vs)
@@ -701,6 +715,8 @@ class PrimitiveCreator:
         self.normals = self.normals.reshape(len(self.blender_mesh.loops), 3)
 
         self.normals = np.round(self.normals, NORMALS_ROUNDING_DIGIT)
+        # Force normalization of normals in case some normals are not (why ?)
+        PrimitiveCreator.normalize_vecs(self.normals)
 
         self.morph_normals = []
         for key_block in key_blocks:
@@ -731,7 +747,7 @@ class PrimitiveCreator:
         for ns in self.morph_normals:
             ns -= self.normals
 
-        if self.export_settings[gltf2_blender_export_keys.YUP]:
+        if self.export_settings['gltf_yup']:
             PrimitiveCreator.zup2yup(self.normals)
             for ns in self.morph_normals:
                 PrimitiveCreator.zup2yup(ns)
@@ -773,7 +789,7 @@ class PrimitiveCreator:
             self.tangents = PrimitiveCreator.apply_mat_to_all(tangent_transform, self.tangents)
             PrimitiveCreator.normalize_vecs(self.tangents)
 
-        if self.export_settings[gltf2_blender_export_keys.YUP]:
+        if self.export_settings['gltf_yup']:
             PrimitiveCreator.zup2yup(self.tangents)
 
 
