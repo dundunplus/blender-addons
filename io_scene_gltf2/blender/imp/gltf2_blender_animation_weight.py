@@ -1,11 +1,12 @@
+# SPDX-FileCopyrightText: 2018-2021 The glTF-Blender-IO authors
+#
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2018-2021 The glTF-Blender-IO authors.
 
 import bpy
 
+from ...io.imp.gltf2_io_user_extensions import import_user_extensions
 from ...io.imp.gltf2_io_binary import BinaryData
 from .gltf2_blender_animation_utils import make_fcurve
-from io_scene_gltf2.io.imp.gltf2_io_user_extensions import import_user_extensions
 
 
 class BlenderWeightAnim():

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2017-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 import bpy
@@ -13,6 +15,7 @@ bl_info = {
     "version": (0, 1),
     "blender": (2, 80, 0),
     "description": "Various dependency graph debugging tools",
+    "location": "Properties > View Layer > Dependency Graph",
     "warning": "",
     "doc_url": "",
     "tracker_url": "",

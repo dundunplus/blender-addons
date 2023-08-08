@@ -1,11 +1,14 @@
+# SPDX-FileCopyrightText: 2018-2021 The glTF-Blender-IO authors
+#
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2018-2021 The glTF-Blender-IO authors.
 
 from typing import List, Dict, Any
 
 
 class Extension:
     """Container for extensions. Allows to specify requiredness"""
+    extension = True # class method used to check Extension class at traversal (after reloading script, isinstance is not working)
+
     def __init__(self, name: str, extension: Dict[str, Any], required: bool = True):
         self.name = name
         self.extension = extension

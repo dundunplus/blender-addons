@@ -1,5 +1,6 @@
+# SPDX-FileCopyrightText: 2018-2021 The glTF-Blender-IO authors
+#
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2018-2021 The glTF-Blender-IO authors.
 
 from ...io.com.gltf2_io import TextureInfo
 from .gltf2_blender_pbrMetallicRoughness import \
@@ -30,7 +31,7 @@ def pbr_specular_glossiness(mh):
         make_emission_socket=mh.needs_emissive(),
         make_alpha_socket=not mh.is_opaque(),
         make_volume_socket=None, # No possible to have KHR_materials_volume with specular/glossiness
-        make_velvet_socket=None # No possible to have KHR_materials_volume with specular/glossiness
+        make_sheen_socket=None # No possible to have KHR_materials_volume with specular/glossiness
     )
 
     if emission_socket:

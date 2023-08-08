@@ -1,11 +1,12 @@
+# SPDX-FileCopyrightText: 2018-2021 The glTF-Blender-IO authors
+#
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2018-2021 The glTF-Blender-IO authors.
 
 import typing
 import math
 from mathutils import Matrix, Vector, Quaternion, Euler
 
-from io_scene_gltf2.blender.com.gltf2_blender_data_path import get_target_property_name
+from .gltf2_blender_data_path import get_target_property_name
 
 
 def list_to_mathutils(values: typing.List[float], data_path: str) -> typing.Union[Vector, Quaternion, Euler]:

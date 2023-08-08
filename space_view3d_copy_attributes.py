@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2010-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 bl_info = {
@@ -720,17 +722,17 @@ class MESH_MT_CopyFaceSettings(Menu):
 
         layout = self.layout
 
-        op = layout.operator(mesh.copy_face_settings, text="Copy Material")
+        op = layout.operator("mesh.copy_face_settings", text="Copy Material")
         op['layer'] = ''
         op['mode'] = 'MAT'
 
         if mesh.uv_layers.active:
-            op = layout.operator(mesh.copy_face_settings, text="Copy Active UV Coords")
+            op = layout.operator("mesh.copy_face_settings", text="Copy Active UV Coords")
             op['layer'] = ''
             op['mode'] = 'UV'
 
         if mesh.vertex_colors.active:
-            op = layout.operator(mesh.copy_face_settings, text="Copy Active Vertex Colors")
+            op = layout.operator("mesh.copy_face_settings", text="Copy Active Vertex Colors")
             op['layer'] = ''
             op['mode'] = 'VCOL'
 
@@ -783,7 +785,7 @@ def _buildmenu(self, mesh, mode, icon):
         layers = mesh.uv_layers
     for layer in layers:
         if not layer.active:
-            op = layout.operator(mesh.copy_face_settings,
+            op = layout.operator("mesh.copy_face_settings",
                                  text=layer.name, icon=icon)
             op['layer'] = layer.name
             op['mode'] = mode

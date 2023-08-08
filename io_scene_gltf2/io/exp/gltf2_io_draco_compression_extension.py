@@ -1,12 +1,13 @@
+# SPDX-FileCopyrightText: 2018-2021 The glTF-Blender-IO authors
+#
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2018-2021 The glTF-Blender-IO authors.
 
 from ctypes import *
 from pathlib import Path
 
-from io_scene_gltf2.io.exp.gltf2_io_binary_data import BinaryData
+from ...io.exp.gltf2_io_binary_data import BinaryData
 from ...io.com.gltf2_io_debug import print_console
-from io_scene_gltf2.io.com.gltf2_io_draco_compression_extension import dll_path
+from ...io.com.gltf2_io_draco_compression_extension import dll_path
 
 
 def encode_scene_primitives(scenes, export_settings):

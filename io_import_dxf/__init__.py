@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2014-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 import bpy
@@ -16,7 +18,7 @@ except:
 bl_info = {
     "name": "Import AutoCAD DXF Format (.dxf)",
     "author": "Lukas Treyer, Manfred Moitzi (support + dxfgrabber library), Vladimir Elistratov, Bastien Montagne, Remigiusz Fiedler (AKA migius)",
-    "version": (0, 9, 6),
+    "version": (0, 9, 8),
     "blender": (2, 80, 0),
     "location": "File > Import > AutoCAD DXF",
     "description": "Import files in the Autocad DXF format (.dxf)",
@@ -537,7 +539,7 @@ class IMPORT_OT_dxf(bpy.types.Operator):
 
 
 def menu_func(self, context):
-    self.layout.operator(IMPORT_OT_dxf.bl_idname, text="AutoCAD DXF")
+    self.layout.operator(IMPORT_OT_dxf.bl_idname, text="AutoCAD DXF (.dxf)")
 
 
 def register():

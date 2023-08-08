@@ -1,13 +1,14 @@
+# SPDX-FileCopyrightText: 2018-2021 The glTF-Blender-IO authors
+#
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2018-2021 The glTF-Blender-IO authors.
 
 import bpy
 
+from ...io.imp.gltf2_io_user_extensions import import_user_extensions
 from ..com.gltf2_blender_extras import set_extras
 from .gltf2_blender_pbrMetallicRoughness import MaterialHelper, pbr_metallic_roughness
 from .gltf2_blender_KHR_materials_pbrSpecularGlossiness import pbr_specular_glossiness
 from .gltf2_blender_KHR_materials_unlit import unlit
-from io_scene_gltf2.io.imp.gltf2_io_user_extensions import import_user_extensions
 
 
 class BlenderMaterial():

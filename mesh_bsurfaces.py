@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2010-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 
@@ -76,8 +78,12 @@ class VIEW3D_PT_tools_SURFSK_mesh(Panel):
             except: pass
             try: col.prop(mesh_object.data.materials[0], "diffuse_color")
             except: pass
-            try: col.prop(mesh_object.modifiers['Shrinkwrap'], "offset")
-            except: pass
+            try:
+                shrinkwrap = next(mod for mod in mesh_object.modifiers
+                                  if mod.type == 'SHRINKWRAP')
+                col.prop(shrinkwrap, "offset")
+            except:
+                pass
             try: col.prop(mesh_object, "show_in_front")
             except: pass
             try: col.prop(bs, "SURFSK_shade_smooth")
@@ -1385,7 +1391,8 @@ class MESH_OT_SURFSK_add_surface(Operator):
                 self.is_crosshatch = False
 
         # Delete all duplicates
-        bpy.ops.object.delete({"selected_objects": objects_to_delete})
+        with bpy.context.temp_override(selected_objects=objects_to_delete):
+            bpy.ops.object.delete()
 
         # If the main object has modifiers, turn their "viewport view status" to
         # what it was before the forced deactivation above
@@ -1606,7 +1613,8 @@ class MESH_OT_SURFSK_add_surface(Operator):
         ob_surface.scale = (1.0, 1.0, 1.0)
 
         # Delete final points temporal object
-        bpy.ops.object.delete({"selected_objects": [final_points_ob]})
+        with bpy.context.temp_override(selected_objects=[final_points_ob]):
+            bpy.ops.object.delete()
 
         # Delete isolated verts if there are any
         bpy.ops.object.select_all('INVOKE_REGION_WIN', action='DESELECT')
@@ -1652,8 +1660,7 @@ class MESH_OT_SURFSK_add_surface(Operator):
 
         final_ob_duplicate = bpy.context.view_layer.objects.active
 
-        bpy.ops.object.modifier_add('INVOKE_REGION_WIN', type='SHRINKWRAP')
-        shrinkwrap_modifier = final_ob_duplicate.modifiers[-1]
+        shrinkwrap_modifier = context.object.modifiers.new("", 'SHRINKWRAP')
         shrinkwrap_modifier.wrap_method = "NEAREST_VERTEX"
         shrinkwrap_modifier.target = self.main_object
 
@@ -1746,7 +1753,8 @@ class MESH_OT_SURFSK_add_surface(Operator):
                             self.main_object.data.vertices[main_object_related_vert_idx].select = True
 
         # Delete duplicated object
-        bpy.ops.object.delete({"selected_objects": [final_ob_duplicate]})
+        with bpy.context.temp_override(selected_objects=[final_ob_duplicate]):
+            bpy.ops.object.delete()
 
         # Join crosshatched surface and main object
         bpy.ops.object.select_all('INVOKE_REGION_WIN', action='DESELECT')
@@ -2536,7 +2544,8 @@ class MESH_OT_SURFSK_add_surface(Operator):
                             ob_simplified_curve[i].data.splines[0].bezier_points[t].co
 
                 # Delete the temporal curve
-                bpy.ops.object.delete({"selected_objects": [ob_simplified_curve[i]]})
+                with bpy.context.temp_override(selected_objects=[ob_simplified_curve[i]]):
+                    bpy.ops.object.delete()
 
         # Get the coords of the points distributed along the sketched strokes,
         # with proportions-U of the first selection
@@ -3016,9 +3025,11 @@ class MESH_OT_SURFSK_add_surface(Operator):
                             surface_splines_parsed[len(surface_splines_parsed) - 1][i] = verts_middle_position_co
 
         # Delete object with control points and object from grease pencil conversion
-        bpy.ops.object.delete({"selected_objects": [ob_ctrl_pts]})
+        with bpy.context.temp_override(selected_objects=[ob_ctrl_pts]):
+            bpy.ops.object.delete()
 
-        bpy.ops.object.delete({"selected_objects": splines_U_objects})
+        with bpy.context.temp_override(selected_objects=splines_U_objects):
+            bpy.ops.object.delete()
 
         # Generate surface
 
@@ -3173,7 +3184,8 @@ class MESH_OT_SURFSK_add_surface(Operator):
                     mat.roughness = 0.0
                     self.main_splines.data.materials.append(mat)
             else:
-                bpy.ops.object.delete({"selected_objects": [self.main_splines]})
+                with bpy.context.temp_override(selected_objects=[self.main_splines]):
+                    bpy.ops.object.delete()
 
             # Delete grease pencil strokes
             if self.strokes_type == "GP_STROKES" and not self.stopping_errors:
@@ -3272,7 +3284,8 @@ class MESH_OT_SURFSK_add_surface(Operator):
             # executions of this operator, with the reserved names used here
             for o in bpy.data.objects:
                 if o.name.find("SURFSKIO_") != -1:
-                    bpy.ops.object.delete({"selected_objects": [o]})
+                    with bpy.context.temp_override(selected_objects=[o]):
+                        bpy.ops.object.delete()
 
             bpy.context.view_layer.objects.active = self.original_curve
 
@@ -3410,7 +3423,8 @@ class MESH_OT_SURFSK_add_surface(Operator):
             self.average_gp_segment_length = segments_lengths_sum / segments_count
 
             # Delete temporary strokes curve object
-            bpy.ops.object.delete({"selected_objects": [self.temporary_curve]})
+            with bpy.context.temp_override(selected_objects=[self.temporary_curve]):
+                bpy.ops.object.delete()
 
             # Set again since "execute()" will turn it again to its initial value
             self.execute(context)
@@ -3431,7 +3445,8 @@ class MESH_OT_SURFSK_add_surface(Operator):
                         pass
 
                 bpy.ops.object.editmode_toggle('INVOKE_REGION_WIN')
-                bpy.ops.object.delete({"selected_objects": [self.original_curve]})
+                with bpy.context.temp_override(selected_objects=[self.original_curve]):
+                    bpy.ops.object.delete()
                 bpy.ops.object.editmode_toggle('INVOKE_REGION_WIN')
 
                 return {"FINISHED"}
@@ -3514,8 +3529,7 @@ class MESH_OT_SURFSK_init(Operator):
             color_red = [1.0, 0.0, 0.0, 0.3]
             material = makeMaterial("BSurfaceMesh", color_red)
             mesh_object.data.materials.append(material)
-            bpy.ops.object.modifier_add(type='SHRINKWRAP')
-            modifier = mesh_object.modifiers["Shrinkwrap"]
+            modifier = mesh_object.modifiers.new("", 'SHRINKWRAP')
             if self.active_object is not None:
                 modifier.target = self.active_object
                 modifier.wrap_method = 'TARGET_PROJECT'
@@ -3593,44 +3607,36 @@ class MESH_OT_SURFSK_add_modifiers(Operator):
             bpy.context.view_layer.objects.active = mesh_object
 
             try:
-                shrinkwrap = mesh_object.modifiers["Shrinkwrap"]
-                if self.active_object is not None and self.active_object != mesh_object:
-                    shrinkwrap.target = self.active_object
-                    shrinkwrap.wrap_method = 'TARGET_PROJECT'
-                    shrinkwrap.wrap_mode = 'OUTSIDE_SURFACE'
-                    shrinkwrap.show_on_cage = True
-                    shrinkwrap.offset = bpy.context.scene.bsurfaces.SURFSK_Shrinkwrap_offset
+                shrinkwrap = next(mod for mod in mesh_object.modifiers
+                                  if mod.type == 'SHRINKWRAP')
             except:
-                bpy.ops.object.modifier_add(type='SHRINKWRAP')
-                shrinkwrap = mesh_object.modifiers["Shrinkwrap"]
-                if self.active_object is not None and self.active_object != mesh_object:
-                    shrinkwrap.target = self.active_object
-                    shrinkwrap.wrap_method = 'TARGET_PROJECT'
-                    shrinkwrap.wrap_mode = 'OUTSIDE_SURFACE'
-                    shrinkwrap.show_on_cage = True
-                    shrinkwrap.offset = bpy.context.scene.bsurfaces.SURFSK_Shrinkwrap_offset
+                shrinkwrap = mesh_object.modifiers.new("", 'SHRINKWRAP')
+            if self.active_object is not None and self.active_object != mesh_object:
+                shrinkwrap.target = self.active_object
+                shrinkwrap.wrap_method = 'TARGET_PROJECT'
+                shrinkwrap.wrap_mode = 'OUTSIDE_SURFACE'
+                shrinkwrap.show_on_cage = True
+                shrinkwrap.offset = bpy.context.scene.bsurfaces.SURFSK_Shrinkwrap_offset
 
             try:
-                mirror = mesh_object.modifiers["Mirror"]
-                mirror.use_clip = True
+                mirror = next(mod for mod in mesh_object.modifiers
+                              if mod.type == 'MIRROR')
             except:
-                bpy.ops.object.modifier_add(type='MIRROR')
-                mirror = mesh_object.modifiers["Mirror"]
-                mirror.use_clip = True
+                mirror = mesh_object.modifiers.new("", 'MIRROR')
+            mirror.use_clip = True
 
             try:
-                _subsurf = mesh_object.modifiers["Subdivision"]
+                _subsurf = next(mod for mod in mesh_object.modifiers
+                                if mod.type == 'SUBSURF')
             except:
-                bpy.ops.object.modifier_add(type='SUBSURF')
-                _subsurf = mesh_object.modifiers["Subdivision"]
+                _subsurf = mesh_object.modifiers.new("", 'SUBSURF')
 
             try:
-                solidify = mesh_object.modifiers["Solidify"]
-                solidify.thickness = 0.01
+                solidify = next(mod for mod in mesh_object.modifiers
+                                if mod.type == 'SOLIDIFY')
             except:
-                bpy.ops.object.modifier_add(type='SOLIDIFY')
-                solidify = mesh_object.modifiers["Solidify"]
-                solidify.thickness = 0.01
+                solidify = mesh_object.modifiers.new("", 'SOLIDIFY')
+            solidify.thickness = 0.01
 
         return {"FINISHED"}
 
@@ -3960,10 +3966,10 @@ class CURVE_OT_SURFSK_reorder_splines(Operator):
         curves_duplicate_2.select_set(True)
         bpy.context.view_layer.objects.active = curves_duplicate_2
 
-        bpy.ops.object.modifier_add('INVOKE_REGION_WIN', type='SHRINKWRAP')
-        curves_duplicate_2.modifiers["Shrinkwrap"].wrap_method = "NEAREST_VERTEX"
-        curves_duplicate_2.modifiers["Shrinkwrap"].target = GP_strokes_mesh
-        bpy.ops.object.modifier_apply('INVOKE_REGION_WIN', modifier='Shrinkwrap')
+        shrinkwrap = curves_duplicate_2.modifiers.new("", 'SHRINKWRAP')
+        shrinkwrap.wrap_method = "NEAREST_VERTEX"
+        shrinkwrap.target = GP_strokes_mesh
+        bpy.ops.object.modifier_apply('INVOKE_REGION_WIN', modifier=shrinkwrap.name)
 
         # Get the distance of each vert from its original position to its position with Shrinkwrap
         nearest_points_coords = {}
@@ -4068,7 +4074,8 @@ class CURVE_OT_SURFSK_reorder_splines(Operator):
         bpy.context.object.name = curve_original_name
 
         # Delete all unused objects
-        bpy.ops.object.delete({"selected_objects": objects_to_delete})
+        with bpy.context.temp_override(selected_objects=objects_to_delete):
+            bpy.ops.object.delete()
 
         bpy.ops.object.select_all('INVOKE_REGION_WIN', action='DESELECT')
         bpy.data.objects[curve_original_name].select_set(True)

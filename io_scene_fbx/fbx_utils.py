@@ -1,7 +1,7 @@
+# SPDX-FileCopyrightText: 2013 Campbell Barton
+# SPDX-FileCopyrightText: 2014 Bastien Montagne
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
-
-# Script copyright (C) Campbell Barton, Bastien Montagne
-
 
 import math
 import time
@@ -9,6 +9,9 @@ import time
 from collections import namedtuple
 from collections.abc import Iterable
 from itertools import zip_longest, chain
+from dataclasses import dataclass, field
+from typing import Callable
+import numpy as np
 
 import bpy
 import bpy_extras
@@ -63,6 +66,9 @@ MAT_CONVERT_BONE = Matrix()
 
 BLENDER_OTHER_OBJECT_TYPES = {'CURVE', 'SURFACE', 'FONT', 'META'}
 BLENDER_OBJECT_TYPES_MESHLIKE = {'MESH'} | BLENDER_OTHER_OBJECT_TYPES
+
+SHAPE_KEY_SLIDER_HARD_MIN = bpy.types.ShapeKey.bl_rna.properties["slider_min"].hard_min
+SHAPE_KEY_SLIDER_HARD_MAX = bpy.types.ShapeKey.bl_rna.properties["slider_max"].hard_max
 
 
 # Lamps.
@@ -243,6 +249,11 @@ def array_to_matrix4(arr):
     return Matrix(tuple(zip(*[iter(arr)]*4))).transposed()
 
 
+def parray_as_ndarray(arr):
+    """Convert an array.array into an np.ndarray that shares the same memory"""
+    return np.frombuffer(arr, dtype=arr.typecode)
+
+
 def similar_values(v1, v2, e=1e-6):
     """Return True if v1 and v2 are nearly the same."""
     if v1 == v2:
@@ -259,17 +270,521 @@ def similar_values_iter(v1, v2, e=1e-6):
             return False
     return True
 
-def vcos_transformed_gen(raw_cos, m=None):
-    # Note: we could most likely get much better performances with numpy, but will leave this as TODO for now.
-    gen = zip(*(iter(raw_cos),) * 3)
-    return gen if m is None else (m @ Vector(v) for v in gen)
 
-def nors_transformed_gen(raw_nors, m=None):
+def shape_difference_exclude_similar(sv_cos, ref_cos, e=1e-6):
+    """Return a tuple of:
+        the difference between the vertex cos in sv_cos and ref_cos, excluding any that are nearly the same,
+        and the indices of the vertices that are not nearly the same"""
+    assert(sv_cos.size == ref_cos.size)
+
+    # Create views of 1 co per row of the arrays, only making copies if needed.
+    sv_cos = sv_cos.reshape(-1, 3)
+    ref_cos = ref_cos.reshape(-1, 3)
+
+    # Quick check for equality
+    if np.array_equal(sv_cos, ref_cos):
+        # There's no difference between the two arrays.
+        empty_cos = np.empty((0, 3), dtype=sv_cos.dtype)
+        empty_indices = np.empty(0, dtype=np.int32)
+        return empty_cos, empty_indices
+
+    # Note that unlike math.isclose(a,b), np.isclose(a,b) is not symmetrical and the second argument 'b', is
+    # considered to be the reference value.
+    # Note that atol=0 will mean that if only one co component being compared is zero, they won't be considered close.
+    similar_mask = np.isclose(sv_cos, ref_cos, atol=0, rtol=e)
+
+    # A co is only similar if every component in it is similar.
+    co_similar_mask = np.all(similar_mask, axis=1)
+
+    # Get the indices of cos that are not similar.
+    not_similar_verts_idx = np.flatnonzero(~co_similar_mask)
+
+    # Subtracting first over the entire arrays and then indexing seems faster than indexing both arrays first and then
+    # subtracting, until less than about 3% of the cos are being indexed.
+    difference_cos = (sv_cos - ref_cos)[not_similar_verts_idx]
+    return difference_cos, not_similar_verts_idx
+
+
+def _mat4_vec3_array_multiply(mat4, vec3_array, dtype=None, return_4d=False):
+    """Multiply a 4d matrix by each 3d vector in an array and return as an array of either 3d or 4d vectors.
+
+    A view of the input array is returned if return_4d=False, the dtype matches the input array and either the matrix is
+    None or, ignoring the last row, is a 3x3 identity matrix with no translation:
+    ┌1, 0, 0, 0┐
+    │0, 1, 0, 0│
+    └0, 0, 1, 0┘
+
+    When dtype=None, it defaults to the dtype of the input array."""
+    return_dtype = dtype if dtype is not None else vec3_array.dtype
+    vec3_array = vec3_array.reshape(-1, 3)
+
+    # Multiplying a 4d mathutils.Matrix by a 3d mathutils.Vector implicitly extends the Vector to 4d during the
+    # calculation by appending 1.0 to the Vector and then the 4d result is truncated back to 3d.
+    # Numpy does not do an implicit extension to 4d, so it would have to be done explicitly by extending the entire
+    # vec3_array to 4d.
+    # However, since the w component of the vectors is always 1.0, the last column can be excluded from the
+    # multiplication and then added to every multiplied vector afterwards, which avoids having to make a 4d copy of
+    # vec3_array beforehand.
+    # For a single column vector:
+    # ┌a, b, c, d┐   ┌x┐   ┌ax+by+cz+d┐
+    # │e, f, g, h│ @ │y│ = │ex+fy+gz+h│
+    # │i, j, k, l│   │z│   │ix+jy+kz+l│
+    # └m, n, o, p┘   └1┘   └mx+ny+oz+p┘
+    # ┌a, b, c┐   ┌x┐   ┌d┐   ┌ax+by+cz┐   ┌d┐   ┌ax+by+cz+d┐
+    # │e, f, g│ @ │y│ + │h│ = │ex+fy+gz│ + │h│ = │ex+fy+gz+h│
+    # │i, j, k│   └z┘   │l│   │ix+jy+kz│   │l│   │ix+jy+kz+l│
+    # └m, n, o┘         └p┘   └mx+ny+oz┘   └p┘   └mx+ny+oz+p┘
+
+    # column_vector_multiplication in mathutils_Vector.c uses double precision math for Matrix @ Vector by casting the
+    # matrix's values to double precision and then casts back to single precision when returning the result, so at least
+    # double precision math is always be used to match standard Blender behaviour.
+    math_precision = np.result_type(np.double, vec3_array)
+
+    to_multiply = None
+    to_add = None
+    w_to_set = 1.0
+    if mat4 is not None:
+        mat_np = np.array(mat4, dtype=math_precision)
+        # Identity matrix is compared against to check if any matrix multiplication is required.
+        identity = np.identity(4, dtype=math_precision)
+        if not return_4d:
+            # If returning 3d, the entire last row of the matrix can be ignored because it only affects the w component.
+            mat_np = mat_np[:3]
+            identity = identity[:3]
+
+        # Split mat_np into the columns to multiply and the column to add afterwards.
+        # First 3 columns
+        multiply_columns = mat_np[:, :3]
+        multiply_identity = identity[:, :3]
+        # Last column only
+        add_column = mat_np.T[3]
+
+        # Analyze the split parts of the matrix to figure out if there is anything to multiply and anything to add.
+        if not np.array_equal(multiply_columns, multiply_identity):
+            to_multiply = multiply_columns
+
+        if return_4d and to_multiply is None:
+            # When there's nothing to multiply, the w component of add_column can be set directly into the array because
+            # mx+ny+oz+p becomes 0x+0y+0z+p where p is add_column[3].
+            w_to_set = add_column[3]
+            # Replace add_column with a view of only the translation.
+            add_column = add_column[:3]
+
+        if add_column.any():
+            to_add = add_column
+
+    if to_multiply is None:
+        # If there's anything to add, ensure it's added using the precision being used for math.
+        array_dtype = math_precision if to_add is not None else return_dtype
+        if return_4d:
+            multiplied_vectors = np.empty((len(vec3_array), 4), dtype=array_dtype)
+            multiplied_vectors[:, :3] = vec3_array
+            multiplied_vectors[:, 3] = w_to_set
+        else:
+            # If there's anything to add, ensure a copy is made so that the input vec3_array isn't modified.
+            multiplied_vectors = vec3_array.astype(array_dtype, copy=to_add is not None)
+    else:
+        # Matrix multiplication has the signature (n,k) @ (k,m) -> (n,m).
+        # Where v is the number of vectors in vec3_array and d is the number of vector dimensions to return:
+        # to_multiply has shape (d,3), vec3_array has shape (v,3) and the result should have shape (v,d).
+        # Either vec3_array or to_multiply must be transposed:
+        # Can transpose vec3_array and then transpose the result:
+        # (v,3).T -> (3,v); (d,3) @ (3,v) -> (d,v); (d,v).T -> (v,d)
+        # Or transpose to_multiply and swap the order of multiplication:
+        # (d,3).T -> (3,d); (v,3) @ (3,d) -> (v,d)
+        # There's no, or negligible, performance difference between the two options, however, the result of the latter
+        # will be C contiguous in memory, making it faster to convert to flattened bytes with .tobytes().
+        multiplied_vectors = vec3_array @ to_multiply.T
+
+    if to_add is not None:
+        for axis, to_add_to_axis in zip(multiplied_vectors.T, to_add):
+            if to_add_to_axis != 0:
+                axis += to_add_to_axis
+
+    # Cast to the desired return type before returning.
+    return multiplied_vectors.astype(return_dtype, copy=False)
+
+
+def vcos_transformed(raw_cos, m=None, dtype=None):
+    return _mat4_vec3_array_multiply(m, raw_cos, dtype)
+
+
+def nors_transformed(raw_nors, m=None, dtype=None):
     # Great, now normals are also expected 4D!
     # XXX Back to 3D normals for now!
-    # gen = zip(*(iter(raw_nors),) * 3 + (_infinite_gen(1.0),))
-    gen = zip(*(iter(raw_nors),) * 3)
-    return gen if m is None else (m @ Vector(v) for v in gen)
+    # return _mat4_vec3_array_multiply(m, raw_nors, dtype, return_4d=True)
+    return _mat4_vec3_array_multiply(m, raw_nors, dtype)
+
+
+def astype_view_signedness(arr, new_dtype):
+    """Unsafely views arr as new_dtype if the itemsize and byteorder of arr matches but the signedness does not.
+
+    Safely views arr as new_dtype if both arr and new_dtype have the same itemsize, byteorder and signedness, but could
+    have a different character code, e.g. 'i' and 'l'. np.ndarray.astype with copy=False does not normally create this
+    view, but Blender can be picky about the character code used, so this function will create the view.
+
+    Otherwise, calls np.ndarray.astype with copy=False.
+
+    The benefit of copy=False is that if the array can be safely viewed as the new type, then a view is made, instead of
+    a copy with the new type.
+
+    Unsigned types can't be viewed safely as signed or vice-versa, meaning that a copy would always be made by
+    .astype(..., copy=False).
+
+    This is intended for viewing uintc data (a common Blender C type with variable itemsize, though usually 4 bytes, so
+    uint32) as int32 (a common FBX type), when the itemsizes match."""
+    arr_dtype = arr.dtype
+
+    if not isinstance(new_dtype, np.dtype):
+        # new_dtype could be a type instance or a string, but it needs to be a dtype to compare its itemsize, byteorder
+        # and kind.
+        new_dtype = np.dtype(new_dtype)
+
+    # For simplicity, only dtypes of the same itemsize and byteorder, but opposite signedness, are handled. Everything
+    # else is left to .astype.
+    arr_kind = arr_dtype.kind
+    new_kind = new_dtype.kind
+    # Signed and unsigned int are opposite in terms of signedness. Other types don't have signedness.
+    integer_kinds = {'i', 'u'}
+    if (
+        arr_kind in integer_kinds and new_kind in integer_kinds
+        and arr_dtype.itemsize == new_dtype.itemsize
+        and arr_dtype.byteorder == new_dtype.byteorder
+    ):
+        # arr and new_dtype have signedness and matching itemsize and byteorder, so return a view of the new type.
+        return arr.view(new_dtype)
+    else:
+        return arr.astype(new_dtype, copy=False)
+
+
+def fast_first_axis_flat(ar):
+    """Get a flat view (or a copy if a view is not possible) of the input array whereby each element is a single element
+    of a dtype that is fast to sort, sorts according to individual bytes and contains the data for an entire row (and
+    any further dimensions) of the input array.
+
+    Since the dtype of the view could sort in a different order to the dtype of the input array, this isn't typically
+    useful for actual sorting, but it is useful for sorting-based uniqueness, such as np.unique."""
+    # If there are no rows, each element will be viewed as the new dtype.
+    elements_per_row = math.prod(ar.shape[1:])
+    row_itemsize = ar.itemsize * elements_per_row
+
+    # Get a dtype with itemsize that equals row_itemsize.
+    # Integer types sort the fastest, but are only available for specific itemsizes.
+    uint_dtypes_by_itemsize = {1: np.uint8, 2: np.uint16, 4: np.uint32, 8: np.uint64}
+    # Signed/unsigned makes no noticeable speed difference, but using unsigned will result in ordering according to
+    # individual bytes like the other, non-integer types.
+    if row_itemsize in uint_dtypes_by_itemsize:
+        entire_row_dtype = uint_dtypes_by_itemsize[row_itemsize]
+    else:
+        # When using kind='stable' sorting, numpy only uses radix sort with integer types, but it's still
+        # significantly faster to sort by a single item per row instead of multiple row elements or multiple structured
+        # type fields.
+        # Construct a flexible size dtype with matching itemsize.
+        # Should always be 4 because each character in a unicode string is UCS4.
+        str_itemsize = np.dtype((np.str_, 1)).itemsize
+        if row_itemsize % str_itemsize == 0:
+            # Unicode strings seem to be slightly faster to sort than bytes.
+            entire_row_dtype = np.dtype((np.str_, row_itemsize // str_itemsize))
+        else:
+            # Bytes seem to be slightly faster to sort than raw bytes (np.void).
+            entire_row_dtype = np.dtype((np.bytes_, row_itemsize))
+
+    # View each element along the first axis as a single element.
+    # View (or copy if a view is not possible) as flat
+    ar = ar.reshape(-1)
+    # To view as a dtype of different size, the last axis (entire array in NumPy 1.22 and earlier) must be C-contiguous.
+    if row_itemsize != ar.itemsize and not ar.flags.c_contiguous:
+        ar = np.ascontiguousarray(ar)
+    return ar.view(entire_row_dtype)
+
+
+def fast_first_axis_unique(ar, return_unique=True, return_index=False, return_inverse=False, return_counts=False):
+    """np.unique with axis=0 but optimised for when the input array has multiple elements per row, and the returned
+    unique array doesn't need to be sorted.
+
+    Arrays with more than one element per row are more costly to sort in np.unique due to being compared one
+    row-element at a time, like comparing tuples.
+
+    By viewing each entire row as a single non-structured element, much faster sorting can be achieved. Since the values
+    are viewed as a different type to their original, this means that the returned array of unique values may not be
+    sorted according to their original type.
+
+    The array of unique values can be excluded from the returned tuple by specifying return_unique=False.
+
+    Float type caveats:
+    All elements of -0.0 in the input array will be replaced with 0.0 to ensure that both values are collapsed into one.
+    NaN values can have lots of different byte representations (e.g. signalling/quiet and custom payloads). Only the
+    duplicates of each unique byte representation will be collapsed into one."""
+    # At least something should always be returned.
+    assert(return_unique or return_index or return_inverse or return_counts)
+    # Only signed integer, unsigned integer and floating-point kinds of data are allowed. Other kinds of data have not
+    # been tested.
+    assert(ar.dtype.kind in "iuf")
+
+    # Floating-point types have different byte representations for -0.0 and 0.0. Collapse them together by replacing all
+    # -0.0 in the input array with 0.0.
+    if ar.dtype.kind == 'f':
+        ar[ar == -0.0] = 0.0
+
+    # It's a bit annoying that the unique array is always calculated even when it might not be needed, but it is
+    # generally insignificant compared to the cost of sorting.
+    result = np.unique(fast_first_axis_flat(ar), return_index=return_index,
+                       return_inverse=return_inverse, return_counts=return_counts)
+
+    if return_unique:
+        unique = result[0] if isinstance(result, tuple) else result
+        # View in the original dtype.
+        unique = unique.view(ar.dtype)
+        # Return the same number of elements per row and any extra dimensions per row as the input array.
+        unique.shape = (-1, *ar.shape[1:])
+        if isinstance(result, tuple):
+            return (unique,) + result[1:]
+        else:
+            return unique
+    else:
+        # Remove the first element, the unique array.
+        result = result[1:]
+        if len(result) == 1:
+            # Unpack single element tuples.
+            return result[0]
+        else:
+            return result
+
+
+def ensure_object_not_in_edit_mode(context, obj):
+    """Objects in Edit mode usually cannot be exported because much of the API used when exporting is not available for
+    Objects in Edit mode.
+
+    Exiting the currently active Object (and any other Objects opened in multi-editing) from Edit mode is simple and
+    should be done with `bpy.ops.mesh.mode_set(mode='OBJECT')` instead of using this function.
+
+    This function is for the rare case where an Object is in Edit mode, but the current context mode is not Edit mode.
+    This can occur from a state where the current context mode is Edit mode, but then the active Object of the current
+    View Layer is changed to a different Object that is not in Edit mode. This changes the current context mode, but
+    leaves the other Object(s) in Edit mode.
+    """
+    if obj.mode != 'EDIT':
+        return True
+
+    # Get the active View Layer.
+    view_layer = context.view_layer
+
+    # A View Layer belongs to a scene.
+    scene = view_layer.id_data
+
+    # Get the current active Object of this View Layer, so we can restore it once done.
+    orig_active = view_layer.objects.active
+
+    # Check if obj is in the View Layer. If obj is not in the View Layer, it cannot be set as the active Object.
+    # We don't use `obj.name in view_layer.objects` because an Object from a Library could have the same name.
+    is_in_view_layer = any(o == obj for o in view_layer.objects)
+
+    do_unlink_from_scene_collection = False
+    try:
+        if not is_in_view_layer:
+            # There might not be any enabled collections in the View Layer, so link obj into the Scene Collection
+            # instead, which is always available to all View Layers of that Scene.
+            scene.collection.objects.link(obj)
+            do_unlink_from_scene_collection = True
+        view_layer.objects.active = obj
+
+        # Now we're finally ready to attempt to change obj's mode.
+        if bpy.ops.object.mode_set.poll():
+            bpy.ops.object.mode_set(mode='OBJECT')
+        if obj.mode == 'EDIT':
+            # The Object could not be set out of EDIT mode and therefore cannot be exported.
+            return False
+    finally:
+        # Always restore the original active Object and unlink obj from the Scene Collection if it had to be linked.
+        view_layer.objects.active = orig_active
+        if do_unlink_from_scene_collection:
+            scene.collection.objects.unlink(obj)
+
+    return True
+
+
+def expand_shape_key_range(shape_key, value_to_fit):
+    """Attempt to expand the slider_min/slider_max of a shape key to fit `value_to_fit` within the slider range,
+    expanding slightly beyond `value_to_fit` if possible, so that the new slider_min/slider_max is not the same as
+    `value_to_fit`. Blender has a hard minimum and maximum for slider values, so it may not be possible to fit the value
+    within the slider range.
+
+    If `value_to_fit` is already within the slider range, no changes are made.
+
+    First tries setting slider_min/slider_max to double `value_to_fit`, otherwise, expands the range in the direction of
+    `value_to_fit` by double the distance to `value_to_fit`.
+
+    The new slider_min/slider_max is rounded down/up to the nearest whole number for a more visually pleasing result.
+
+    Returns whether it was possible to expand the slider range to fit `value_to_fit`."""
+    if value_to_fit < (slider_min := shape_key.slider_min):
+        if value_to_fit < 0.0:
+            # For the most common case, set slider_min to double value_to_fit.
+            target_slider_min = value_to_fit * 2.0
+        else:
+            # Doubling value_to_fit would make it larger, so instead decrease slider_min by double the distance between
+            # slider_min and value_to_fit.
+            target_slider_min = slider_min - (slider_min - value_to_fit) * 2.0
+        # Set slider_min to the first whole number less than or equal to target_slider_min.
+        shape_key.slider_min = math.floor(target_slider_min)
+
+        return value_to_fit >= SHAPE_KEY_SLIDER_HARD_MIN
+    elif value_to_fit > (slider_max := shape_key.slider_max):
+        if value_to_fit > 0.0:
+            # For the most common case, set slider_max to double value_to_fit.
+            target_slider_max = value_to_fit * 2.0
+        else:
+            # Doubling value_to_fit would make it smaller, so instead increase slider_max by double the distance between
+            # slider_max and value_to_fit.
+            target_slider_max = slider_max + (value_to_fit - slider_max) * 2.0
+        # Set slider_max to the first whole number greater than or equal to target_slider_max.
+        shape_key.slider_max = math.ceil(target_slider_max)
+
+        return value_to_fit <= SHAPE_KEY_SLIDER_HARD_MAX
+    else:
+        # Value is already within the range.
+        return True
+
+
+# ##### Attribute utils. #####
+AttributeDataTypeInfo = namedtuple("AttributeDataTypeInfo", ["dtype", "foreach_attribute", "item_size"])
+_attribute_data_type_info_lookup = {
+    'FLOAT': AttributeDataTypeInfo(np.single, "value", 1),
+    'INT': AttributeDataTypeInfo(np.intc, "value", 1),
+    'FLOAT_VECTOR': AttributeDataTypeInfo(np.single, "vector", 3),
+    'FLOAT_COLOR': AttributeDataTypeInfo(np.single, "color", 4),  # color_srgb is an alternative
+    'BYTE_COLOR': AttributeDataTypeInfo(np.single, "color", 4),  # color_srgb is an alternative
+    'STRING': AttributeDataTypeInfo(None, "value", 1),  # Not usable with foreach_get/set
+    'BOOLEAN': AttributeDataTypeInfo(bool, "value", 1),
+    'FLOAT2': AttributeDataTypeInfo(np.single, "vector", 2),
+    'INT8': AttributeDataTypeInfo(np.intc, "value", 1),
+    'INT32_2D': AttributeDataTypeInfo(np.intc, "value", 2),
+}
+
+
+def attribute_get(attributes, name, data_type, domain):
+    """Get an attribute by its name, data_type and domain.
+
+    Returns None if no attribute with this name, data_type and domain exists."""
+    attr = attributes.get(name)
+    if not attr:
+        return None
+    if attr.data_type == data_type and attr.domain == domain:
+        return attr
+    # It shouldn't normally happen, but it's possible there are multiple attributes with the same name, but different
+    # data_types or domains.
+    for attr in attributes:
+        if attr.name == name and attr.data_type == data_type and attr.domain == domain:
+            return attr
+    return None
+
+
+def attribute_foreach_set(attribute, array_or_list, foreach_attribute=None):
+    """Set every value of an attribute with foreach_set."""
+    if foreach_attribute is None:
+        foreach_attribute = _attribute_data_type_info_lookup[attribute.data_type].foreach_attribute
+    attribute.data.foreach_set(foreach_attribute, array_or_list)
+
+
+def attribute_to_ndarray(attribute, foreach_attribute=None):
+    """Create a NumPy ndarray from an attribute."""
+    data = attribute.data
+    data_type_info = _attribute_data_type_info_lookup[attribute.data_type]
+    ndarray = np.empty(len(data) * data_type_info.item_size, dtype=data_type_info.dtype)
+    if foreach_attribute is None:
+        foreach_attribute = data_type_info.foreach_attribute
+    data.foreach_get(foreach_attribute, ndarray)
+    return ndarray
+
+
+@dataclass
+class AttributeDescription:
+    """Helper class to reduce duplicate code for handling built-in Blender attributes."""
+    name: str
+    # Valid identifiers can be found in bpy.types.Attribute.bl_rna.properties["data_type"].enum_items
+    data_type: str
+    # Valid identifiers can be found in bpy.types.Attribute.bl_rna.properties["domain"].enum_items
+    domain: str
+    # Some attributes are required to exist if certain conditions are met. If a required attribute does not exist when
+    # attempting to get it, an AssertionError is raised.
+    is_required_check: Callable[[bpy.types.AttributeGroup], bool] = None
+    # NumPy dtype that matches the internal C data of this attribute.
+    dtype: np.dtype = field(init=False)
+    # The default attribute name to use with foreach_get and foreach_set.
+    foreach_attribute: str = field(init=False)
+    # The number of elements per value of the attribute when flattened into a 1-dimensional list/array.
+    item_size: int = field(init=False)
+
+    def __post_init__(self):
+        data_type_info = _attribute_data_type_info_lookup[self.data_type]
+        self.dtype = data_type_info.dtype
+        self.foreach_attribute = data_type_info.foreach_attribute
+        self.item_size = data_type_info.item_size
+
+    def is_required(self, attributes):
+        """Check if the attribute is required to exist in the provided attributes."""
+        is_required_check = self.is_required_check
+        return is_required_check and is_required_check(attributes)
+
+    def get(self, attributes):
+        """Get the attribute.
+
+        If the attribute is required, but does not exist, an AssertionError is raised, otherwise None is returned."""
+        attr = attribute_get(attributes, self.name, self.data_type, self.domain)
+        if not attr and self.is_required(attributes):
+            raise AssertionError("Required attribute '%s' with type '%s' and domain '%s' not found in %r"
+                                 % (self.name, self.data_type, self.domain, attributes))
+        return attr
+
+    def ensure(self, attributes):
+        """Get the attribute, creating it if it does not exist.
+
+        Raises a RuntimeError if the attribute could not be created, which should only happen when attempting to create
+        an attribute with a reserved name, but with the wrong data_type or domain. See usage of
+        BuiltinCustomDataLayerProvider in Blender source for most reserved names.
+
+        There is no guarantee that the returned attribute has the desired name because the name could already be in use
+        by another attribute with a different data_type and/or domain."""
+        attr = self.get(attributes)
+        if attr:
+            return attr
+
+        attr = attributes.new(self.name, self.data_type, self.domain)
+        if not attr:
+            raise RuntimeError("Could not create attribute '%s' with type '%s' and domain '%s' in %r"
+                               % (self.name, self.data_type, self.domain, attributes))
+        return attr
+
+    def foreach_set(self, attributes, array_or_list, foreach_attribute=None):
+        """Get the attribute, creating it if it does not exist, and then set every value in the attribute."""
+        attribute_foreach_set(self.ensure(attributes), array_or_list, foreach_attribute)
+
+    def get_ndarray(self, attributes, foreach_attribute=None):
+        """Get the attribute and if it exists, return a NumPy ndarray containing its data, otherwise return None."""
+        attr = self.get(attributes)
+        return attribute_to_ndarray(attr, foreach_attribute) if attr else None
+
+    def to_ndarray(self, attributes, foreach_attribute=None):
+        """Get the attribute and if it exists, return a NumPy ndarray containing its data, otherwise return a
+        zero-length ndarray."""
+        ndarray = self.get_ndarray(attributes, foreach_attribute)
+        return ndarray if ndarray is not None else np.empty(0, dtype=self.dtype)
+
+
+# Built-in Blender attributes
+# Only attributes used by the importer/exporter are included here.
+# See usage of BuiltinCustomDataLayerProvider in Blender source to find most built-in attributes.
+MESH_ATTRIBUTE_MATERIAL_INDEX = AttributeDescription("material_index", 'INT', 'FACE')
+MESH_ATTRIBUTE_POSITION = AttributeDescription("position", 'FLOAT_VECTOR', 'POINT',
+                                               is_required_check=lambda attributes: bool(attributes.id_data.vertices))
+MESH_ATTRIBUTE_SHARP_EDGE = AttributeDescription("sharp_edge", 'BOOLEAN', 'EDGE')
+MESH_ATTRIBUTE_EDGE_VERTS = AttributeDescription(".edge_verts", 'INT32_2D', 'EDGE',
+                                                 is_required_check=lambda attributes: bool(attributes.id_data.edges))
+MESH_ATTRIBUTE_CORNER_VERT = AttributeDescription(".corner_vert", 'INT', 'CORNER',
+                                                  is_required_check=lambda attributes: bool(attributes.id_data.loops))
+MESH_ATTRIBUTE_CORNER_EDGE = AttributeDescription(".corner_edge", 'INT', 'CORNER',
+                                                  is_required_check=lambda attributes: bool(attributes.id_data.loops))
+MESH_ATTRIBUTE_SHARP_FACE = AttributeDescription("sharp_face", 'BOOLEAN', 'FACE')
 
 
 # ##### UIDs code. #####
@@ -452,6 +967,10 @@ def _elem_data_vec(elem, name, value, func_name):
 
 def elem_data_single_bool(elem, name, value):
     return _elem_data_single(elem, name, value, "add_bool")
+
+
+def elem_data_single_int8(elem, name, value):
+    return _elem_data_single(elem, name, value, "add_int8")
 
 
 def elem_data_single_int16(elem, name, value):
@@ -906,7 +1425,7 @@ class ObjectWrapper(metaclass=MetaObjectWrapper):
     we need to use a key to identify each.
     """
     __slots__ = (
-        'name', 'key', 'bdata', 'parented_to_armature',
+        'name', 'key', 'bdata', 'parented_to_armature', 'override_materials',
         '_tag', '_ref', '_dupli_matrix'
     )
 
@@ -961,6 +1480,7 @@ class ObjectWrapper(metaclass=MetaObjectWrapper):
             self.bdata = bdata
             self._ref = armature
         self.parented_to_armature = False
+        self.override_materials = None
 
     def __eq__(self, other):
         return isinstance(other, self.__class__) and self.key == other.key
@@ -1175,11 +1695,14 @@ class ObjectWrapper(metaclass=MetaObjectWrapper):
         return ()
     bones = property(get_bones)
 
-    def get_material_slots(self):
+    def get_materials(self):
+        override_materials = self.override_materials
+        if override_materials is not None:
+            return override_materials
         if self._tag in {'OB', 'DP'}:
-            return self.bdata.material_slots
+            return tuple(slot.material for slot in self.bdata.material_slots)
         return ()
-    material_slots = property(get_material_slots)
+    materials = property(get_materials)
 
     def is_deformed_by_armature(self, arm_obj):
         if not (self.is_object and self.type == 'MESH'):
@@ -1220,7 +1743,7 @@ FBXExportSettings = namedtuple("FBXExportSettings", (
     "bone_correction_matrix", "bone_correction_matrix_inv",
     "bake_anim", "bake_anim_use_all_bones", "bake_anim_use_nla_strips", "bake_anim_use_all_actions",
     "bake_anim_step", "bake_anim_simplify_factor", "bake_anim_force_startend_keying",
-    "use_metadata", "media_settings", "use_custom_props", "colors_type",
+    "use_metadata", "media_settings", "use_custom_props", "colors_type", "prioritize_active_color"
 ))
 
 # Helper container gathering some data we need multiple times:

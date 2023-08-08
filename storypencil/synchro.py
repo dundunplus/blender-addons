@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2022-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 from typing import List, Sequence, Tuple
@@ -159,7 +161,7 @@ class STORYPENCIL_OT_AddSecondaryWindowOperator(Operator):
                 new_window.workspace = wk
                 return
         with context.temp_override(window=new_window):
-            bpy.ops.workspace.append_activate(context, idname=wrk_name, filepath=template_path)
+            bpy.ops.workspace.append_activate(idname=wrk_name, filepath=template_path)
 
 
 class STORYPENCIL_OT_WindowBringFront(Operator):
@@ -812,6 +814,14 @@ class STORYPENCIL_OT_TabSwitch(Operator):
     bl_options = {'INTERNAL'}
 
     def execute(self, context):
+        # For meta strips the tab key must be processed by other operator, so
+        # just pass through to the next operator in the stack.
+        if context.active_sequence_strip and context.active_sequence_strip.type == 'META':
+            return {'PASS_THROUGH'}
+
+        if context.scene.sequence_editor and context.scene.sequence_editor.meta_stack:
+            return {'PASS_THROUGH'}
+
         if context.scene.storypencil_use_new_window:
             bpy.ops.storypencil.sync_set_main('INVOKE_DEFAULT', True)
         else:
@@ -821,15 +831,7 @@ class STORYPENCIL_OT_TabSwitch(Operator):
                 # Get strip under time cursor
                 strip, old_frame = get_sequence_at_frame(
                     scene.frame_current, sequences=sequences)
-                # For meta strips the tab key must be processed by other operator, so
-                # just pass through to the next operator in the stack.
-                if strip is None or strip.type != 'SCENE':
-                    if context.active_sequence_strip and context.active_sequence_strip.type == 'META':
-                        return {'PASS_THROUGH'}
-
-                    if context.scene.sequence_editor and context.scene.sequence_editor.meta_stack:
-                        return {'PASS_THROUGH'}
-                else:
+                if strip and strip.type == 'SCENE':
                     bpy.ops.storypencil.switch('INVOKE_DEFAULT', True)
 
         return {'FINISHED'}

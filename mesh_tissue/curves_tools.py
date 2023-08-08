@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2022-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 #                                                                              #
@@ -65,7 +67,7 @@ class tissue_to_curve_prop(PropertyGroup):
         )
     bool_lock : BoolProperty(
         name="Lock",
-        description="Prevent automatic update on settings changes or if other objects have it in the hierarchy.",
+        description="Prevent automatic update on settings changes or if other objects have it in the hierarchy",
         default=False,
         update = anim_curve_active
         )
@@ -77,7 +79,7 @@ class tissue_to_curve_prop(PropertyGroup):
         )
     bool_run : BoolProperty(
         name="Animatable Curve",
-        description="Automatically recompute the conversion when the frame is changed.",
+        description="Automatically recompute the conversion when the frame is changed",
         default = False
         )
     use_modifiers : BoolProperty(

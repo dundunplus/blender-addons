@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2010-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 bl_info = {
@@ -8,7 +10,8 @@ bl_info = {
     "location": "3D View",
     "description": "Distribute object instances on another object.",
     "warning": "",
-    "doc_url": "",
+    "doc_url": "{BLENDER_MANUAL_URL}/addons/object/scatter_objects.html",
+    "tracker_url": "https://projects.blender.org/blender/blender-addons/issues",
     "support": 'OFFICIAL',
     "category": "Object",
 }

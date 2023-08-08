@@ -1,10 +1,12 @@
+# SPDX-FileCopyrightText: 2012-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 bl_info = {
     "name": "Manage UI translations",
     "author": "Bastien Montagne",
-    "version": (1, 3, 2),
-    "blender": (2, 92, 0),
+    "version": (1, 3, 4),
+    "blender": (4, 0, 0),
     "location": "Main \"File\" menu, text editor, any UI control",
     "description": "Allows managing UI translations directly from Blender "
         "(update main .po files, update scripts' translations, etc.)",

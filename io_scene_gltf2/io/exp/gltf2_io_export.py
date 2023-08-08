@@ -1,5 +1,6 @@
+# SPDX-FileCopyrightText: 2018-2021 The glTF-Blender-IO authors
+#
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2018-2021 The glTF-Blender-IO authors.
 
 #
 # Imports
@@ -7,7 +8,7 @@
 
 import json
 import struct
-from io_scene_gltf2.io.exp.gltf2_io_user_extensions import export_user_extensions
+from ...io.exp.gltf2_io_user_extensions import export_user_extensions
 
 #
 # Globals

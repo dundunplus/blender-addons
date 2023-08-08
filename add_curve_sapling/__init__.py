@@ -1,9 +1,11 @@
+# SPDX-FileCopyrightText: 2011-2022 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 bl_info = {
     "name": "Sapling Tree Gen",
     "author": "Andrew Hale (TrumanBlending), Aaron Buchler, CansecoGPC",
-    "version": (0, 3, 4),
+    "version": (0, 3, 5),
     "blender": (2, 80, 0),
     "location": "View3D > Add > Curve",
     "description": ("Adds a parametric tree. The method is presented by "
@@ -184,7 +186,7 @@ class ImportData(Operator):
             f = open(os.path.join(getPresetpaths()[1], self.filename), 'r')
         # Find the first non-comment, non-blank line, this must contain preset text (all on one line).
         for settings in f:
-            if settings and (not settings.startswith("#")):
+            if settings and (not settings.isspace()) and (not settings.startswith("#")):
                 break
         f.close()
         # print(settings)

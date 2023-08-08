@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2019-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 import os
@@ -556,7 +558,7 @@ def camera_light_source(use_camera,
 
     camera_factor = 15.0
 
-    # If chosen a camera is put into the scene.
+    # If chosen, a camera is put into the scene.
     if use_camera == True:
 
         # Assume that the object is put into the global origin. Then, the
@@ -755,7 +757,8 @@ def draw_sticks_dupliverts(all_atoms,
     if use_sticks_color == False:
         stick_material = bpy.data.materials.new(ELEMENTS[-1].name)
         stick_material.use_nodes = True
-        mat_P_BSDF = stick_material.node_tree.nodes['Principled BSDF']
+        mat_P_BSDF = next(n for n in stick_material.node_tree.nodes
+                          if n.type == "BSDF_PRINCIPLED")
         mat_P_BSDF.inputs['Base Color'].default_value = ELEMENTS[-1].color
 
     # Sort the sticks and put them into a new list such that ...
@@ -849,7 +852,7 @@ def draw_sticks_dupliverts(all_atoms,
         i = 0
 
         # What follows is school mathematics! :-) We construct equidistant
-        # planes, on which the stcik sections (cylinders) are perpendicular on.
+        # planes, on which the stick sections (cylinders) are perpendicular on.
         for stick in stick_list:
 
             dv = stick[2]
@@ -1048,7 +1051,8 @@ def draw_sticks_skin(all_atoms,
 
     stick_material = bpy.data.materials.new(ELEMENTS[-1].name)
     stick_material.use_nodes = True
-    mat_P_BSDF = stick_material.node_tree.nodes['Principled BSDF']
+    mat_P_BSDF = next(n for n in stick_material.node_tree.nodes
+                      if n.type == "BSDF_PRINCIPLED")
     mat_P_BSDF.inputs['Base Color'].default_value = ELEMENTS[-1].color
     new_stick_mesh.active_material = stick_material
 
@@ -1098,6 +1102,7 @@ def draw_sticks_normal(all_atoms,
                        center,
                        Stick_diameter,
                        Stick_sectors,
+                       Stick_dist,
                        use_sticks_smooth,
                        use_sticks_one_object,
                        use_sticks_one_object_nr,
@@ -1105,7 +1110,8 @@ def draw_sticks_normal(all_atoms,
 
     stick_material = bpy.data.materials.new(ELEMENTS[-1].name)
     stick_material.use_nodes = True
-    mat_P_BSDF = stick_material.node_tree.nodes['Principled BSDF']
+    mat_P_BSDF = next(n for n in stick_material.node_tree.nodes
+                      if n.type == "BSDF_PRINCIPLED")
     mat_P_BSDF.inputs['Base Color'].default_value = ELEMENTS[-1].color
 
     up_axis = Vector([0.0, 0.0, 1.0])
@@ -1114,60 +1120,104 @@ def draw_sticks_normal(all_atoms,
     list_group = []
     list_group_sub = []
     counter = 0
-    for stick in all_sticks:
+    for i, stick in enumerate(all_sticks):
 
-        # The vectors of the two atoms
-        atom1 = all_atoms[stick.atom1-1].location-center
-        atom2 = all_atoms[stick.atom2-1].location-center
-        # Location
-        location = (atom1 + atom2) * 0.5
-        # The difference of both vectors
-        v = (atom2 - atom1)
-        # Angle with respect to the z-axis
-        angle = v.angle(up_axis, 0)
-        # Cross-product between v and the z-axis vector. It is the
-        # vector of rotation.
-        axis = up_axis.cross(v)
-        # Calculate Euler angles
-        euler = Matrix.Rotation(angle, 4, axis).to_euler()
-        # Create stick
-        stick = bpy.ops.mesh.primitive_cylinder_add(vertices=Stick_sectors,
-                                                    radius=Stick_diameter,
-                                                    depth=v.length,
-                                                    end_fill_type='NGON',
-                                                    align='WORLD',
-                                                    enter_editmode=False,
-                                                    location=location,
-                                                    rotation=(0, 0, 0))
-        # Put the stick into the scene ...
-        stick = bpy.context.view_layer.objects.active
-        # ... and rotate the stick.
-        stick.rotation_euler = euler
-        # ... and name
-        stick.name = "Stick_Cylinder"
-        counter += 1
+        # We treat here single, double and tripple bonds: stick.number <= 3
+        for repeat in range(stick.number):
 
-        # Smooth the cylinder.
-        if use_sticks_smooth == True:
-            bpy.ops.object.select_all(action='DESELECT')
-            stick.select_set(True)
-            bpy.ops.object.shade_smooth()
+            # The vectors of the two atoms
+            atom1 = copy(all_atoms[stick.atom1-1].location)-center
+            atom2 = copy(all_atoms[stick.atom2-1].location)-center
 
-        list_group_sub.append(stick)
+            dist =  Stick_diameter * Stick_dist
 
-        if use_sticks_one_object == True:
-            if counter == use_sticks_one_object_nr:
+            # The two sticks are on the left and right of the middle connection.
+            if stick.number == 2:
+                if repeat == 0:
+                    atom1 += (stick.dist * dist)
+                    atom2 += (stick.dist * dist)
+                if repeat == 1:
+                    atom1 -= (stick.dist * dist)
+                    atom2 -= (stick.dist * dist)
+
+            if stick.number == 3:
+                if repeat == 0:
+                    atom1 += (stick.dist * dist)
+                    atom2 += (stick.dist * dist)
+                if repeat == 2:
+                    atom1 -= (stick.dist * dist)
+                    atom2 -= (stick.dist * dist)
+
+            # Vector pointing along the stick direction
+            dv = atom1 - atom2
+            # The normalized vector of this, with lenght 1
+            n  = dv / dv.length
+            # Starting point of the stick
+            location = (atom1 + atom2) * 0.5
+            # Angle with respect to the z-axis
+            angle = dv.angle(up_axis, 0)
+            # Cross-product between v and the z-axis vector. It is the
+            # vector of rotation.
+            axis = up_axis.cross(dv)
+            # Calculate Euler angles
+            euler = Matrix.Rotation(angle, 4, axis).to_euler()
+            # Create stick
+            stick_obj = bpy.ops.mesh.primitive_cylinder_add(vertices=Stick_sectors,
+                                                            radius=Stick_diameter,
+                                                            depth=dv.length,
+                                                            end_fill_type='NGON',
+                                                            align='WORLD',
+                                                            enter_editmode=False,
+                                                            location=location,
+                                                            rotation=(0, 0, 0))
+            # Put the stick into the scene ...
+            stick_obj = bpy.context.view_layer.objects.active
+            # ... and rotate the stick.
+            stick_obj.rotation_euler = euler
+            # ... and name
+            if stick.number == 1:
+                stick_obj.name = "Stick_Cylinder_%04d" %(i)
+            elif stick.number == 2:
+                if repeat == 0:
+                    stick_obj.name = "Stick_Cylinder_%04d" %(i) + "_left"
+                elif repeat == 1:
+                    stick_obj.name = "Stick_Cylinder_%04d" %(i) + "_right"
+            elif stick.number == 3:
+                if repeat == 0:
+                    stick_obj.name = "Stick_Cylinder_%04d" %(i) + "_left"
+                elif repeat == 1:
+                    stick_obj.name = "Stick_Cylinder_%04d" %(i) + "_middle"
+                elif repeat == 2:
+                    stick_obj.name = "Stick_Cylinder_%04d" %(i) + "_right"
+                # Never occurs:
+                else:
+                    stick_obj.name = "Stick_Cylinder"
+            # Never occurs:
+            else:
+                stick_obj.name = "Stick_Cylinder"
+            counter += 1
+
+            # Smooth the cylinder.
+            if use_sticks_smooth == True:
                 bpy.ops.object.select_all(action='DESELECT')
-                for stick in list_group_sub:
-                    stick.select_set(True)
-                bpy.ops.object.join()
-                list_group.append(bpy.context.view_layer.objects.active)
-                bpy.ops.object.select_all(action='DESELECT')
-                list_group_sub = []
-                counter = 0
-        else:
-            # Material ...
-            stick.active_material = stick_material
+                stick_obj.select_set(True)
+                bpy.ops.object.shade_smooth()
+
+            list_group_sub.append(stick_obj)
+
+            if use_sticks_one_object == True:
+                if counter == use_sticks_one_object_nr:
+                    bpy.ops.object.select_all(action='DESELECT')
+                    for stick_select in list_group_sub:
+                        stick_select.select_set(True)
+                    bpy.ops.object.join()
+                    list_group.append(bpy.context.view_layer.objects.active)
+                    bpy.ops.object.select_all(action='DESELECT')
+                    list_group_sub = []
+                    counter = 0
+            else:
+                # Material ...
+                stick_obj.active_material = stick_material
 
     if use_sticks_one_object == True:
         bpy.ops.object.select_all(action='DESELECT')
@@ -1181,7 +1231,7 @@ def draw_sticks_normal(all_atoms,
             group.select_set(True)
         bpy.ops.object.join()
         bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY',
-                                   center='MEDIAN')
+                                  center='MEDIAN')
         sticks = bpy.context.view_layer.objects.active
         sticks.active_material = stick_material
 
@@ -1332,7 +1382,8 @@ def import_pdb(Ball_type,
         material = bpy.data.materials.new(atom_type[1])
         material.diffuse_color = atom_type[2]
         material.use_nodes = True
-        mat_P_BSDF = material.node_tree.nodes['Principled BSDF']
+        mat_P_BSDF = next(n for n in material.node_tree.nodes
+                          if n.type == "BSDF_PRINCIPLED")
         mat_P_BSDF.inputs['Base Color'].default_value = atom_type[2]
         material.name = atom_type[0]
         atom_material_list.append(material)
@@ -1350,7 +1401,8 @@ def import_pdb(Ball_type,
                 if atom.name == "Vacancy":
                     # For cycles and eevee.
                     material.use_nodes = True
-                    mat_P_BSDF = material.node_tree.nodes['Principled BSDF']
+                    mat_P_BSDF = next(n for n in material.node_tree.nodes
+                                      if n.type == "BSDF_PRINCIPLED")
                     mat_P_BSDF.inputs['Metallic'].default_value = 0.1
                     mat_P_BSDF.inputs['Specular'].default_value = 0.15
                     mat_P_BSDF.inputs['Roughness'].default_value = 0.05
@@ -1526,6 +1578,7 @@ def import_pdb(Ball_type,
                                     object_center_vec,
                                     Stick_diameter,
                                     Stick_sectors,
+                                    Stick_dist,
                                     use_sticks_smooth,
                                     use_sticks_one_object,
                                     use_sticks_one_object_nr,

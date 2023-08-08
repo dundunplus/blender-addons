@@ -1,9 +1,10 @@
+# SPDX-FileCopyrightText: 2018-2021 The glTF-Blender-IO authors
+#
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2018-2021 The glTF-Blender-IO authors.
 
 import typing
 import array
-from io_scene_gltf2.io.com import gltf2_io_constants
+from ...io.com import gltf2_io_constants
 
 
 class BinaryData:

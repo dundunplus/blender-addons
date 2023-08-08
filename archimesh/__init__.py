@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2016-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 # ----------------------------------------------------------
@@ -11,7 +13,7 @@ bl_info = {
     "name": "Archimesh",
     "author": "Antonio Vazquez (antonioya)",
     "location": "View3D > Add Mesh / Sidebar > Create Tab",
-    "version": (1, 2, 3),
+    "version": (1, 2, 5),
     "blender": (3, 0, 0),
     "description": "Generate rooms, doors, windows, and other architecture objects",
     "doc_url": "{BLENDER_MANUAL_URL}/addons/add_mesh/archimesh.html",

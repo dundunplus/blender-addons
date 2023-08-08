@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2011-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 import bpy
@@ -5,6 +7,12 @@ import gpu
 from mathutils import Vector, Matrix
 from mathutils.geometry import tessellate_polygon
 from gpu_extras.batch import batch_for_shader
+
+# Use OIIO if available, else Blender for writing the image.
+try:
+    import OpenImageIO as oiio
+except ImportError:
+    oiio = None
 
 
 def export(filepath, face_data, colors, width, height, opacity):
@@ -44,6 +52,12 @@ def get_normalize_uvs_matrix():
     matrix.col[3][1] = -1
     matrix[0][0] = 2
     matrix[1][1] = 2
+
+    # OIIO writes arrays from the left-upper corner.
+    if oiio:
+        matrix.col[3][1] *= -1.0
+        matrix[1][1] *= -1.0
+
     return matrix
 
 
@@ -58,7 +72,7 @@ def draw_background_colors(face_data, opacity):
         indices.extend([index + offset for index in triangle] for triangle in triangles)
         offset += len(uvs)
 
-    shader = gpu.shader.from_builtin('2D_FLAT_COLOR')
+    shader = gpu.shader.from_builtin('FLAT_COLOR')
     batch = batch_for_shader(
         shader, 'TRIS',
         {"pos": coords, "color": colors},
@@ -90,6 +104,14 @@ def draw_lines(face_data):
 
 
 def save_pixels(filepath, pixel_data, width, height):
+    if oiio:
+        spec = oiio.ImageSpec(width, height, 4, "uint8")
+        image = oiio.ImageOutput.create(filepath)
+        image.open(filepath, spec)
+        image.write_image(pixel_data)
+        image.close()
+        return
+
     image = bpy.data.images.new("temp", width, height, alpha=True)
     image.filepath = filepath
     image.pixels = [v / 255 for v in pixel_data]

@@ -1,5 +1,6 @@
+# SPDX-FileCopyrightText: 2018-2021 The glTF-Blender-IO authors
+#
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2018-2021 The glTF-Blender-IO authors.
 
 from .gltf2_blender_pbrMetallicRoughness import base_color, make_output_nodes
 
@@ -32,7 +33,7 @@ def unlit(mh):
         make_emission_socket=False,
         make_alpha_socket=not mh.is_opaque(),
         make_volume_socket=None, # Not possible to have KHR_materials_volume with unlit
-        make_velvet_socket=None #Not possible to have KHR_materials_sheen with unlit
+        make_sheen_socket=None #Not possible to have KHR_materials_sheen with unlit
     )
 
     base_color(

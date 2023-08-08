@@ -1,9 +1,11 @@
+# SPDX-FileCopyrightText: 2019-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 bl_info = {
     "name": "Import Palettes",
-    "author": "Antonio Vazquez",
-    "version": (1, 0, 0),
+    "author": "Antonio Vazquez, Kevin C. Burke (@blastframe)",
+    "version": (1, 0, 1),
     "blender": (2, 81, 6),
     "location": "File > Import",
     "description": "Import Palettes",

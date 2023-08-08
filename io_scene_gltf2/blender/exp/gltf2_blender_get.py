@@ -1,13 +1,13 @@
+# SPDX-FileCopyrightText: 2018-2021 The glTF-Blender-IO authors
+#
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2018-2021 The glTF-Blender-IO authors.
 
 import bpy
 from mathutils import Vector, Matrix
-
-from ..com.gltf2_blender_material_helpers import get_gltf_node_name, get_gltf_node_old_name
 from ...blender.com.gltf2_blender_conversion import texture_transform_blender_to_gltf
-from io_scene_gltf2.io.com import gltf2_io_debug
-from io_scene_gltf2.blender.exp import gltf2_blender_search_node_tree
+from ...io.com import gltf2_io_debug
+from ..com.gltf2_blender_material_helpers import get_gltf_node_name, get_gltf_node_old_name
+from .material import gltf2_blender_search_node_tree
 
 
 def get_animation_target(action_group: bpy.types.ActionGroup):
@@ -72,9 +72,9 @@ def get_socket(blender_material: bpy.types.Material, name: str, volume=False):
             type = bpy.types.ShaderNodeBackground
             name = "Color"
         elif name == "sheenColor":
-            return get_node_socket(blender_material, bpy.types.ShaderNodeBsdfVelvet, "Color")
+            return get_node_socket(blender_material, bpy.types.ShaderNodeBsdfSheen, "Color")
         elif name == "sheenRoughness":
-            return get_node_socket(blender_material, bpy.types.ShaderNodeBsdfVelvet, "Sigma")
+            return get_node_socket(blender_material, bpy.types.ShaderNodeBsdfSheen, "Roughness")
         else:
             if volume is False:
                 type = bpy.types.ShaderNodeBsdfPrincipled

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2022-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 # ---------------------------- ADAPTIVE DUPLIFACES --------------------------- #
@@ -188,7 +190,7 @@ def set_tessellate_handler(self, context):
 class tissue_prop(PropertyGroup):
     bool_lock : BoolProperty(
         name="Lock",
-        description="Prevent automatic update on settings changes or if other objects have it in the hierarchy.",
+        description="Prevent automatic update on settings changes or if other objects have it in the hierarchy",
         default=False
         )
     bool_dependencies : BoolProperty(

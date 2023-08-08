@@ -1,8 +1,10 @@
+# SPDX-FileCopyrightText: 2010-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 bl_info = {
     "name": "Rigify",
-    "version": (0, 6, 6),
+    "version": (0, 6, 7),
     "author": "Nathan Vegdahl, Lucio Rossi, Ivan Cappiello, Alexander Gavrilov",  # noqa
     "blender": (3, 0, 0),
     "description": "Automatic rigging from building-block components",

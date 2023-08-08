@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2017-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 # --------------------------------- TISSUE ----------------------------------- #
@@ -17,7 +19,7 @@
 bl_info = {
     "name": "Tissue",
     "author": "Alessandro Zomparelli (Co-de-iT)",
-    "version": (0, 3, 52),
+    "version": (0, 3, 54),
     "blender": (2, 93, 0),
     "location": "",
     "description": "Tools for Computational Design",

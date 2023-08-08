@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2017-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 __author__ = "Nutti <nutti.metro@gmail.com>"
@@ -449,7 +451,8 @@ class MUV_OT_TextureProjection_Project(bpy.types.Operator):
             # assign image
             if compat.check_version(2, 80, 0) >= 0:
                 node_tree = obj.active_material.node_tree
-                output_node = node_tree.nodes["Material Output"]
+                output_node = next(n for n in node_tree.nodes
+                                   if n.type == "OUTPUT_MATERIAL")
 
                 nodes = common.find_texture_nodes_from_material(
                     obj.active_material)

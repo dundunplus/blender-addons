@@ -1,13 +1,13 @@
+# SPDX-FileCopyrightText: 2018-2021 The glTF-Blender-IO authors
+#
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2018-2021 The glTF-Blender-IO authors.
 
 import bpy
-
-from .gltf2_blender_image import BlenderImage
+from ...io.com.gltf2_io import Sampler
+from ...io.com.gltf2_io_constants import TextureFilter, TextureWrap
+from ...io.imp.gltf2_io_user_extensions import import_user_extensions
 from ..com.gltf2_blender_conversion import texture_transform_gltf_to_blender
-from io_scene_gltf2.io.com.gltf2_io import Sampler
-from io_scene_gltf2.io.com.gltf2_io_constants import TextureFilter, TextureWrap
-from io_scene_gltf2.io.imp.gltf2_io_user_extensions import import_user_extensions
+from .gltf2_blender_image import BlenderImage
 
 def texture(
     mh,
@@ -69,11 +69,13 @@ def texture(
         wrap_s = TextureWrap.Repeat
     if wrap_t is None:
         wrap_t = TextureWrap.Repeat
-    # If wrapping is REPEATxREPEAT or CLAMPxCLAMP, just set tex_img.extension
-    if (wrap_s, wrap_t) == (TextureWrap.Repeat, TextureWrap.Repeat):
+    # If wrapping is the same in both directions, just set tex_img.extension
+    if wrap_s == wrap_t == TextureWrap.Repeat:
         tex_img.extension = 'REPEAT'
-    elif (wrap_s, wrap_t) == (TextureWrap.ClampToEdge, TextureWrap.ClampToEdge):
+    elif wrap_s == wrap_t == TextureWrap.ClampToEdge:
         tex_img.extension = 'EXTEND'
+    elif wrap_s == wrap_t == TextureWrap.MirroredRepeat:
+        tex_img.extension = 'MIRROR'
     else:
         # Otherwise separate the UV components and use math nodes to compute
         # the wrapped UV coordinates

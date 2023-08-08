@@ -1,5 +1,6 @@
+# SPDX-FileCopyrightText: 2018-2021 The glTF-Blender-IO authors
+#
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2018-2021 The glTF-Blender-IO authors.
 
 # NOTE: Generated from latest glTF 2.0 JSON Scheme specs using quicktype (https://github.com/quicktype/quicktype)
 # command used:
@@ -15,7 +16,7 @@
 import sys
 import traceback
 
-from io_scene_gltf2.io.com import gltf2_io_debug
+from ...io.com import gltf2_io_debug
 
 
 def from_int(x):

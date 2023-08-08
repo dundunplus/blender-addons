@@ -1,5 +1,7 @@
+# SPDX-FileCopyrightText: 2016-2020 by Nathan Lovato, Daniel Oakey, Razvan Radulescu, and contributors
+#
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2016-2020 by Nathan Lovato, Daniel Oakey, Razvan Radulescu, and contributors
+
 """
 Find the two closest cuts, trims and deletes all strips above in the range but leaves some
 margin. Removes the newly formed gap.
@@ -18,7 +20,7 @@ class POWER_SEQUENCER_OT_trim_to_surrounding_cuts(bpy.types.Operator):
     little time offset. It's useful after you removed some bad audio but you need to keep some
     video around for a transition.
 
-    By default, the tool leaves a 0.2 seconds margin on either side of the trim.
+    By default, the tool leaves a 0.2 seconds margin on either side of the trim
     """
 
     doc = {

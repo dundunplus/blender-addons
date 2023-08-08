@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2015-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 # Originals by meta-androcto, Pablo Vazquez, Liero, Richard Wilks
@@ -64,9 +66,7 @@ def Add_Symmetrical_Empty():
     sempty.name = "SymmEmpty"
 
     # check if we have a mirror modifier, otherwise add
-    if (sempty.modifiers and sempty.modifiers['Mirror']):
-        pass
-    else:
+    if not any(mod.type == 'MIRROR' for mod in sempty.modifiers):
         bpy.ops.object.modifier_add(type='MIRROR')
 
     # Delete all!
@@ -83,9 +83,7 @@ def Add_Symmetrical_Vert():
     sempty.name = "SymmVert"
 
     # check if we have a mirror modifier, otherwise add
-    if (sempty.modifiers and sempty.modifiers['Mirror']):
-        pass
-    else:
+    if not any(mod.type == 'MIRROR' for mod in sempty.modifiers):
         bpy.ops.object.modifier_add(type='MIRROR')
 
     # Delete all!
@@ -102,7 +100,8 @@ class AddSymmetricalEmpty(Operator):
 
     def draw(self, context):
         layout = self.layout
-        mirror = bpy.context.object.modifiers['Mirror']
+        mirror = next(mod for mod in bpy.context.object.modifiers
+                      if mod.type == 'MIRROR')
 
         layout.prop(mirror, "use_clip", text="Use Clipping")
 
@@ -126,7 +125,8 @@ class AddSymmetricalVert(Operator):
 
     def draw(self, context):
         layout = self.layout
-        mirror = bpy.context.object.modifiers['Mirror']
+        mirror = next(mod for mod in bpy.context.object.modifiers
+                      if mod.type == 'MIRROR')
 
         layout.prop(mirror, "use_clip", text="Use Clipping")
 

@@ -1,13 +1,14 @@
+# SPDX-FileCopyrightText: 2019-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
-#
-#
+
 #  Author            : Clemens Barth (Blendphys@root-1.de)
-#  Homepage(Wiki)    : http://development.root-1.de/Atomic_Blender.php
+#  Homepage(Wiki)    : https://docs.blender.org/manual/en/dev/addons/import_export/mesh_atomic.html
 #
 #  Start of project                  : 2011-08-31 by CB
 #  First publication in Blender      : 2011-11-11 by CB
 #  Fusion of the PDB, XYZ and Panel  : 2019-03-22 by CB
-#  Last modified                     : 2019-05-17
+#  Last modified                     : 2023-05-19
 #
 #  Contributing authors
 #  ====================
@@ -43,7 +44,7 @@ bl_info = {
     "name": "Atomic Blender PDB/XYZ",
     "description": "Importing atoms listed in PDB or XYZ files as balls into Blender",
     "author": "Clemens Barth",
-    "version": (1, 8),
+    "version": (1, 8, 1),
     "blender": (2, 80, 0),
     "location": "File -> Import -> PDB (.pdb) and File -> Import -> XYZ (.xyz)",
     "warning": "",

@@ -1,6 +1,6 @@
+# SPDX-FileCopyrightText: 2011 Campbell Barton
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
-
-# Script copyright (C) Campbell Barton
 
 from math import radians, ceil
 
@@ -98,7 +98,7 @@ def sorted_nodes(bvh_nodes):
 def read_bvh(context, file_path, rotate_mode='XYZ', global_scale=1.0):
     # File loading stuff
     # Open the file for importing
-    file = open(file_path, 'rU')
+    file = open(file_path, 'r')
 
     # Separate into a list of lists, each line a list of words.
     file_lines = file.readlines()

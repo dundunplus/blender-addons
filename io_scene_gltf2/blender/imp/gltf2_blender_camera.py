@@ -1,9 +1,10 @@
+# SPDX-FileCopyrightText: 2018-2021 The glTF-Blender-IO authors
+#
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2018-2021 The glTF-Blender-IO authors.
 
 import bpy
 from ..com.gltf2_blender_extras import set_extras
-from io_scene_gltf2.io.imp.gltf2_io_user_extensions import import_user_extensions
+from ...io.imp.gltf2_io_user_extensions import import_user_extensions
 
 
 class BlenderCamera():

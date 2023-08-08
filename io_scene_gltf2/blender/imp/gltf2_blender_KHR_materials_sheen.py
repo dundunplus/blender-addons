@@ -1,12 +1,9 @@
+# SPDX-FileCopyrightText: 2018-2022 The glTF-Blender-IO authors
+#
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2018-2022 The glTF-Blender-IO authors.
 
 from ...io.com.gltf2_io import TextureInfo
 from .gltf2_blender_texture import texture
-from .gltf2_blender_image import BlenderImage
-from ..exp.gltf2_blender_image import TmpImageGuard
-import numpy as np
-import bpy
 
 def sheen(  mh,
             location_sheenColor,

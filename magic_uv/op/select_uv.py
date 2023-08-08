@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2018-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 __author__ = "Nutti <nutti.metro@gmail.com>"
@@ -64,7 +66,7 @@ class _Properties:
         )
         scene.muv_select_uv_sync_mesh_selection = BoolProperty(
             name="Sync Mesh Selection",
-            description="Select the mesh's faces as well as UV's faces",
+            description="Select the mesh's faces as well as UVs' faces",
             default=False
         )
 
@@ -106,7 +108,7 @@ class MUV_OT_SelectUV_SelectOverlapped(bpy.types.Operator):
     )
     sync_mesh_selection = BoolProperty(
         name="Sync Mesh Selection",
-        description="Select mesh's faces as well as UV's faces",
+        description="Select the mesh's faces as well as UVs' faces",
         default=False
     )
 
@@ -199,7 +201,7 @@ class MUV_OT_SelectUV_SelectFlipped(bpy.types.Operator):
     )
     sync_mesh_selection = BoolProperty(
         name="Sync Mesh Selection",
-        description="Select mesh's faces as well as UV's faces",
+        description="Select the mesh's faces as well as UVs' faces",
         default=False
     )
 
@@ -332,11 +334,12 @@ class MUV_OT_SelectUV_ZoomSelectedUV(bpy.types.Operator):
             bmesh.update_edit_mesh(obj.data)
 
         # Zoom.
-        override_context = self._get_override_context(context)
-        if override_context is None:
+        context_override = self._get_override_context(context)
+        if context_override is None:
             self.report({'WARNING'}, "More than one 'VIEW_3D' area must exist")
             return {'CANCELLED'}
-        bpy.ops.view3d.view_selected(override_context, use_all_regions=False)
+        with context.temp_override(**context_override):
+            bpy.ops.view3d.view_selected(use_all_regions=False)
 
         # Revert selection of vertices.
         for v in sel_verts:

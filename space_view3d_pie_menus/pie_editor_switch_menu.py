@@ -1,11 +1,13 @@
+# SPDX-FileCopyrightText: 2016-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 bl_info = {
     "name": "Hotkey: 'Ctrl Alt S' ",
     "description": "Switch Editor Type Menu",
     "author": "saidenka, meta-androcto",
-    "version": (0, 1, 1),
-    "blender": (2, 80, 0),
+    "version": (0, 1, 2),
+    "blender": (3, 40, 1),
     "location": "All Editors",
     "warning": "",
     "doc_url": "",
@@ -64,7 +66,7 @@ class PIE_MT_AreaTypePieOther(Menu):
         self.layout.operator(
             PIE_OT_SetAreaType.bl_idname,
             text="File Browser",
-            icon="FILEBROWSER").types = "FILE_BROWSER"
+            icon="FILEBROWSER").types = "FILES"
         self.layout.operator(PIE_OT_SetAreaType.bl_idname, text="Preferences",
                              icon="PREFERENCES").types = "PREFERENCES"
         self.layout.operator(PIE_OT_SetAreaType.bl_idname, text="Text Editor", icon="TEXT").types = "TEXT_EDITOR"

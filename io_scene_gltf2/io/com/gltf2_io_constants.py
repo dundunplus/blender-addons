@@ -1,5 +1,6 @@
+# SPDX-FileCopyrightText: 2018-2021 The glTF-Blender-IO authors
+#
 # SPDX-License-Identifier: Apache-2.0
-# Copyright 2018-2021 The glTF-Blender-IO authors.
 
 from enum import IntEnum
 
@@ -150,3 +151,6 @@ GLTF_DATA_TYPE_MAT3 = "MAT3"
 GLTF_DATA_TYPE_MAT4 = "MAT4"
 
 GLTF_IOR = 1.5
+
+# Rounding digit used for normal rounding
+NORMALS_ROUNDING_DIGIT = 4

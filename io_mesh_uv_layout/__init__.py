@@ -1,9 +1,11 @@
+# SPDX-FileCopyrightText: 2011-2023 Blender Foundation
+#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 bl_info = {
     "name": "UV Layout",
     "author": "Campbell Barton, Matt Ebb",
-    "version": (1, 1, 5),
+    "version": (1, 1, 6),
     "blender": (3, 0, 0),
     "location": "UV Editor > UV > Export UV Layout",
     "description": "Export the UV layout as a 2D graphic",
