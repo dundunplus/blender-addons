@@ -551,20 +551,33 @@ def make_percent_subchunk(chunk_id, percent):
     return pct_sub
 
 
-def make_texture_chunk(chunk_id, images):
+def make_texture_chunk(chunk_id, teximages, pct):
     """Make Material Map texture chunk."""
     # Add texture percentage value (100 = 1.0)
-    mat_sub = make_percent_subchunk(chunk_id, 1)
+    mat_sub = make_percent_subchunk(chunk_id, pct)
     has_entry = False
 
-    def add_image(img):
-        filename = bpy.path.basename(image.filepath)
+    def add_image(img, extension):
+        filename = bpy.path.basename(img.filepath)
         mat_sub_file = _3ds_chunk(MAT_MAP_FILE)
+        mat_sub_tiling = _3ds_chunk(MAT_MAP_TILING)
         mat_sub_file.add_variable("image", _3ds_string(sane_name(filename)))
         mat_sub.add_subchunk(mat_sub_file)
 
-    for image in images:
-        add_image(image)
+        tiling = 0
+        if extension == 'EXTEND':  # decal flag
+            tiling |= 0x1
+        if extension == 'MIRROR':  # mirror flag
+            tiling |= 0x2
+        if extension == 'CLIP':  # no wrap
+            tiling |= 0x10
+
+        mat_sub_tiling.add_variable("tiling", _3ds_ushort(tiling))
+        mat_sub.add_subchunk(mat_sub_tiling)
+
+    for tex in teximages:
+        extend = tex.extension
+        add_image(tex.image, extend)
         has_entry = True
 
     return mat_sub if has_entry else None
@@ -749,18 +762,22 @@ def make_material_chunk(material, image):
         # Make sure no textures are lost. Everything that doesn't fit
         # into a channel is exported as secondary texture
         diffuse = []
-
-        for link in wrap.material.node_tree.links:
-            if link.from_node.type == 'TEX_IMAGE' and link.to_node.type in {'MIX', 'MIX_RGB'}:
-                diffuse = [link.from_node.image]
-
+        matmap = False
+        mtype = 'MIX', 'MIX_RGB'
+        lks = material.node_tree.links
+        pct = next((lk.from_node.inputs[0].default_value for lk in lks if lk.from_node.type in mtype and lk.to_node.type == 'BSDF_PRINCIPLED'), 0.5)
+        for link in lks:
+            mix_primary = link.from_node if link.from_node.type == 'TEX_IMAGE' and link.to_node.type in mtype else False
+            mix_secondary = link.from_node if link.from_node.type == 'TEX_IMAGE' and link.to_socket.identifier in {'Color1', 'A_Color'} else False
+            if mix_secondary:
+                matmap = make_texture_chunk(MAT_TEX2MAP, [mix_secondary], pct)
+            elif mix_primary:
+                diffuse.append(mix_primary) 
         if diffuse:
-            if not primary_tex:
-                matmap = make_texture_chunk(MAT_DIFFUSEMAP, diffuse)
-            else:
-                matmap = make_texture_chunk(MAT_TEX2MAP, diffuse)
-            if matmap:
-                material_chunk.add_subchunk(matmap)
+            material_chunk.add_subchunk(make_texture_chunk(MAT_DIFFUSEMAP, diffuse, pct))
+            primary_tex = True
+        if primary_tex and matmap:
+            material_chunk.add_subchunk(matmap)
 
     else:
         shading.add_variable("shading", _3ds_ushort(2))  # Gouraud shading
