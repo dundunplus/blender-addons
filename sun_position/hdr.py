@@ -6,6 +6,7 @@
 
 import bpy
 from bpy.props import FloatProperty, FloatVectorProperty
+from bpy.app.translations import pgettext_iface as iface_
 import gpu
 from gpu_extras.batch import batch_for_shader
 from mathutils import Vector
@@ -77,7 +78,19 @@ class SUNPOS_OT_ShowHdr(bpy.types.Operator):
     @classmethod
     def poll(self, context):
         sun_props = context.scene.sun_pos_properties
-        return sun_props.hdr_texture and sun_props.sun_object is not None
+        if sun_props.sun_object is None:
+            self.poll_message_set("Please select a Sun object")
+            return False
+        if not sun_props.hdr_texture:
+            self.poll_message_set("Please select an Environment Texture node")
+            return False
+
+        nt = context.scene.world.node_tree.nodes
+        env_tex_node = nt.get(context.scene.sun_pos_properties.hdr_texture)
+        if env_tex_node is None or env_tex_node.type != "TEX_ENVIRONMENT":
+            self.poll_message_set("Please select a valid Environment Texture node")
+            return False
+        return True
 
     def update(self, context, event):
         sun_props = context.scene.sun_pos_properties
@@ -248,8 +261,8 @@ class SUNPOS_OT_ShowHdr(bpy.types.Operator):
         self.initial_azimuth = context.scene.sun_pos_properties.hdr_azimuth
 
         context.workspace.status_text_set(
-            "Enter/LMB: confirm, Esc/RMB: cancel,"
-            " MMB: pan, mouse wheel: zoom, Ctrl + mouse wheel: set exposure")
+            iface_("Enter/LMB: confirm, Esc/RMB: cancel, MMB: pan, "
+                   "mouse wheel: zoom, Ctrl + mouse wheel: set exposure"))
 
         self._handle = bpy.types.SpaceView3D.draw_handler_add(
             draw_callback_px, (self, context), 'WINDOW', 'POST_PIXEL'

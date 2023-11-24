@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+import bpy
 import re
 import os
 from typing import List
@@ -13,7 +14,11 @@ from ...io.com.gltf2_io_constants import ComponentType, DataType
 from ...io.exp import gltf2_io_binary_data, gltf2_io_buffer, gltf2_io_image_data
 from ...io.exp.gltf2_io_user_extensions import export_user_extensions
 from .gltf2_blender_gather_accessors import gather_accessor
+from .material.gltf2_blender_gather_image import get_gltf_image_from_blender_image
 
+class AdditionalData:
+    def __init__(self):
+        additional_textures = []
 
 class GlTF2Exporter:
     """
@@ -58,6 +63,9 @@ class GlTF2Exporter:
             skins=[],
             textures=[]
         )
+
+
+        self.additional_data = AdditionalData()
 
         self.__buffer = gltf2_io_buffer.Buffer()
         self.__images = {}
@@ -117,7 +125,7 @@ class GlTF2Exporter:
                     f.write(self.__buffer.to_bytes())
                 uri = buffer_name
             else:
-                uri = self.__buffer.to_embed_string()
+                pass # This is no more possible, we don't export embedded buffers
 
             buffer = gltf2_io.Buffer(
                 byte_length=self.__buffer.byte_length,
@@ -320,6 +328,20 @@ class GlTF2Exporter:
                     len_ = len([i for i in self.nodes_idx_to_remove if i < skin.skeleton])
                     skin.skeleton = skin.skeleton - len_
 
+            # Remove animation channels that was targeting a node that will be removed
+            new_animation_list = []
+            for animation in self.__gltf.animations:
+                new_channel_list = []
+                for channel in animation.channels:
+                    if channel.target.node not in self.nodes_idx_to_remove:
+                        new_channel_list.append(channel)
+                animation.channels = new_channel_list
+                if len(animation.channels) > 0:
+                    new_animation_list.append(animation)
+            self.__gltf.animations = new_animation_list
+
+            #TODO: remove unused animation accessors?
+
             # And now really remove nodes
             self.__gltf.nodes = [node for idx, node in enumerate(self.__gltf.nodes) if idx not in self.nodes_idx_to_remove]
 
@@ -340,6 +362,22 @@ class GlTF2Exporter:
     def traverse_unused_skins(self, skins):
         for s in skins:
             self.__traverse(s)
+
+    def traverse_additional_textures(self):
+        if self.export_settings['gltf_unused_textures'] is True:
+            tab = []
+            for tex in self.export_settings['additional_texture_export']:
+                res = self.__traverse(tex)
+                tab.append(res)
+
+            self.additional_data.additional_textures = tab
+
+    def traverse_additional_images(self):
+        if self.export_settings['gltf_unused_images']:
+            for img in [img for img in bpy.data.images if img.source != "VIEWER"]:
+                # TODO manage full / partial / custom via hook ...
+                if img.name not in self.export_settings['exported_images'].keys():
+                    self.__traverse(get_gltf_image_from_blender_image(img.name, self.export_settings))
 
     def add_animation(self, animation: gltf2_io.Animation):
         """
@@ -493,3 +531,38 @@ class GlTF2Exporter:
 
         # do nothing for any type that does not match a glTF schema (primitives)
         return node
+
+def fix_json(obj):
+    # TODO: move to custom JSON encoder
+    fixed = obj
+    if isinstance(obj, dict):
+        fixed = {}
+        for key, value in obj.items():
+            if key == 'extras' and value is not None:
+                fixed[key] = value
+                continue
+            if not __should_include_json_value(key, value):
+                continue
+            fixed[key] = fix_json(value)
+    elif isinstance(obj, list):
+        fixed = []
+        for value in obj:
+            fixed.append(fix_json(value))
+    elif isinstance(obj, float):
+        # force floats to int, if they are integers (prevent INTEGER_WRITTEN_AS_FLOAT validator warnings)
+        if int(obj) == obj:
+            return int(obj)
+    return fixed
+
+def __should_include_json_value(key, value):
+    allowed_empty_collections = ["KHR_materials_unlit", "KHR_materials_specular"]
+
+    if value is None:
+        return False
+    elif __is_empty_collection(value) and key not in allowed_empty_collections:
+        return False
+    return True
+
+
+def __is_empty_collection(value):
+    return (isinstance(value, dict) or isinstance(value, list)) and len(value) == 0

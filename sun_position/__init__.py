@@ -18,7 +18,7 @@
 bl_info = {
     "name": "Sun Position",
     "author": "Michael Martin, Damien Picard",
-    "version": (3, 5, 3),
+    "version": (3, 5, 4),
     "blender": (3, 2, 0),
     "location": "World > Sun Position",
     "description": "Show sun position with objects and/or sky texture",
@@ -31,10 +31,11 @@ if "bpy" in locals():
     importlib.reload(properties)
     importlib.reload(ui_sun)
     importlib.reload(hdr)
+    importlib.reload(sun_calc)
     importlib.reload(translations)
 
 else:
-    from . import properties, ui_sun, hdr, translations
+    from . import properties, ui_sun, hdr, sun_calc, translations
 
 import bpy
 from bpy.app.handlers import persistent

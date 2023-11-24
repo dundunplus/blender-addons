@@ -157,14 +157,14 @@ def create_path(scene):
         frame = "{:04d}".format(scene.frame_current)
     else:
         frame = "{:04d}-{:04d}".format(scene.frame_start, scene.frame_end)
-        
+
     os.makedirs(dirname, exist_ok=True)
-    
+
     return os.path.join(dirname, basename + frame + ".svg")
 
 
 class SVGExporterLinesetPanel(bpy.types.Panel):
-    """Creates a Panel in the Render Layers context of the properties editor"""
+    """Creates a panel in the View Layer context of the properties editor"""
     bl_idname = "RENDER_PT_SVGExporterLinesetPanel"
     bl_space_type = 'PROPERTIES'
     bl_label = "Freestyle Line Style SVG Export"
