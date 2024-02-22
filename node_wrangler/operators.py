@@ -1691,7 +1691,7 @@ class NWCopySettings(Operator, NWBase):
                 new_node.location = node_loc
 
             for str_from, str_to in reconnections:
-                node_tree.connect_sockets(eval(str_from), eval(str_to))
+                connect_sockets(eval(str_from), eval(str_to))
 
             success_names.append(new_node.name)
 
@@ -1959,7 +1959,8 @@ class NWAddPrincipledSetup(Operator, NWBase, ImportHelper):
             ['Metallic', tags.metallic.split(' '), None],
             ['Specular', tags.specular.split(' '), None],
             ['Roughness', rough_abbr + gloss_abbr, None],
-            ['Normal', normal_abbr + bump_abbr, None],
+            ['Bump', bump_abbr, None],
+            ['Normal', normal_abbr, None],
             ['Transmission', tags.transmission.split(' '), None],
             ['Emission', tags.emission.split(' '), None],
             ['Alpha', tags.alpha.split(' '), None],
@@ -1990,6 +1991,9 @@ class NWAddPrincipledSetup(Operator, NWBase, ImportHelper):
         disp_texture = None
         ao_texture = None
         normal_node = None
+        normal_node_texture = None
+        bump_node = None
+        bump_node_texture = None
         roughness_node = None
         for i, sname in enumerate(socketnames):
             print(i, sname[0], sname[2])
@@ -2020,8 +2024,48 @@ class NWAddPrincipledSetup(Operator, NWBase, ImportHelper):
 
                 continue
 
+            # BUMP NODES
+            elif sname[0] == 'Bump':
+                # Test if new texture node is bump map
+                fname_components = split_into_components(sname[2])
+                match_bump = set(bump_abbr).intersection(set(fname_components))
+                if match_bump:
+                    # If Bump add bump node in between
+                    bump_node_texture = nodes.new(type='ShaderNodeTexImage')
+                    img = bpy.data.images.load(path.join(import_path, sname[2]))
+                    bump_node_texture.image = img
+                    bump_node_texture.label = 'Bump'
+
+                    # Add bump node
+                    bump_node = nodes.new(type='ShaderNodeBump')
+                    link = connect_sockets(bump_node.inputs[2], bump_node_texture.outputs[0])
+                    link = connect_sockets(active_node.inputs['Normal'], bump_node.outputs[0])
+                continue
+
+            # NORMAL NODES
+            elif sname[0] == 'Normal':
+                # Test if new texture node is normal map
+                fname_components = split_into_components(sname[2])
+                match_normal = set(normal_abbr).intersection(set(fname_components))
+                if match_normal:
+                    # If Normal add normal node in between
+                    normal_node_texture = nodes.new(type='ShaderNodeTexImage')
+                    img = bpy.data.images.load(path.join(import_path, sname[2]))
+                    normal_node_texture.image = img
+                    normal_node_texture.label = 'Normal'
+
+                    # Add normal node
+                    normal_node = nodes.new(type='ShaderNodeNormalMap')
+                    link = connect_sockets(normal_node.inputs[1], normal_node_texture.outputs[0])
+                    # Connect to bump node if it was created before, otherwise to the BSDF
+                    if bump_node is None:
+                        link = connect_sockets(active_node.inputs[sname[0]], normal_node.outputs[0])
+                    else:
+                        link = connect_sockets(bump_node.inputs[sname[0]], normal_node.outputs[sname[0]])
+                continue
+
             # AMBIENT OCCLUSION TEXTURE
-            if sname[0] == 'Ambient Occlusion':
+            elif sname[0] == 'Ambient Occlusion':
                 ao_texture = nodes.new(type='ShaderNodeTexImage')
                 img = bpy.data.images.load(path.join(import_path, sname[2]))
                 ao_texture.image = img
@@ -2037,25 +2081,7 @@ class NWAddPrincipledSetup(Operator, NWBase, ImportHelper):
                 img = bpy.data.images.load(path.join(import_path, sname[2]))
                 texture_node.image = img
 
-                # NORMAL NODES
-                if sname[0] == 'Normal':
-                    # Test if new texture node is normal or bump map
-                    fname_components = split_into_components(sname[2])
-                    match_normal = set(normal_abbr).intersection(set(fname_components))
-                    match_bump = set(bump_abbr).intersection(set(fname_components))
-                    if match_normal:
-                        # If Normal add normal node in between
-                        normal_node = nodes.new(type='ShaderNodeNormalMap')
-                        link = connect_sockets(normal_node.inputs[1], texture_node.outputs[0])
-                    elif match_bump:
-                        # If Bump add bump node in between
-                        normal_node = nodes.new(type='ShaderNodeBump')
-                        link = connect_sockets(normal_node.inputs[2], texture_node.outputs[0])
-
-                    link = connect_sockets(active_node.inputs[sname[0]], normal_node.outputs[0])
-                    normal_node_texture = texture_node
-
-                elif sname[0] == 'Roughness':
+                if sname[0] == 'Roughness':
                     # Test if glossy or roughness map
                     fname_components = split_into_components(sname[2])
                     match_rough = set(rough_abbr).intersection(set(fname_components))
@@ -2091,6 +2117,10 @@ class NWAddPrincipledSetup(Operator, NWBase, ImportHelper):
 
         if disp_texture:
             texture_nodes.append(disp_texture)
+        if bump_node_texture:
+            texture_nodes.append(bump_node_texture)
+        if normal_node_texture:
+            texture_nodes.append(normal_node_texture)
 
         if ao_texture:
             # We want the ambient occlusion texture to be the top most texture node
@@ -2104,6 +2134,10 @@ class NWAddPrincipledSetup(Operator, NWBase, ImportHelper):
         if normal_node:
             # Extra alignment if normal node was added
             normal_node.location = normal_node_texture.location + Vector((300, 0))
+
+        if bump_node:
+            # Extra alignment if bump node was added
+            bump_node.location = bump_node_texture.location + Vector((300, 0))
 
         if roughness_node:
             # Alignment of invert node if glossy map
@@ -2125,7 +2159,7 @@ class NWAddPrincipledSetup(Operator, NWBase, ImportHelper):
         else:
             link = connect_sockets(texture_nodes[0].inputs[0], mapping.outputs[0])
 
-        # Connect texture_coordiantes to mapping node
+        # Connect texture_coordinates to mapping node
         texture_input = nodes.new(type='ShaderNodeTexCoord')
         texture_input.location = mapping.location + Vector((-200, 0))
         link = connect_sockets(mapping.inputs[0], texture_input.outputs[2])
@@ -2178,35 +2212,21 @@ class NWAddReroutes(Operator, NWBase):
         # create reroutes and recreate links
         for node in [n for n in nodes if n.select]:
             if node.outputs:
-                x = node.location.x
+                x = node.location.x + node.width + 20.0
                 y = node.location.y
-                width = node.width
+                new_node_reroutes = []
+
                 # unhide 'REROUTE' nodes to avoid issues with location.y
                 if node.type == 'REROUTE':
                     node.hide = False
-                # When node is hidden - width_hidden not usable.
-                # Hack needed to calculate real width
-                if node.hide:
-                    bpy.ops.node.select_all(action='DESELECT')
-                    helper = nodes.new('NodeReroute')
-                    helper.select = True
-                    node.select = True
-                    # resize node and helper to zero. Then check locations to calculate width
-                    bpy.ops.transform.resize(value=(0.0, 0.0, 0.0))
-                    width = 2.0 * (helper.location.x - node.location.x)
-                    # restore node location
-                    node.location = x, y
-                    # delete helper
-                    node.select = False
-                    # only helper is selected now
-                    bpy.ops.node.delete()
-                x = node.location.x + width + 20.0
-                if node.type != 'REROUTE':
+                else:
                     y -= 35.0
                 y_offset = -22.0
                 loc = x, y
             reroutes_count = 0  # will be used when aligning reroutes added to hidden nodes
             for out_i, output in enumerate(node.outputs):
+                if output.is_unavailable:
+                    continue
                 pass_used = False  # initial value to be analyzed if 'R_LAYERS'
                 # if node != 'R_LAYERS' - "pass_used" not needed, so set it to True
                 if node.type != 'R_LAYERS':
@@ -2227,24 +2247,27 @@ class NWAddReroutes(Operator, NWBase):
                     valid = ((option == 'ALL') or
                              (option == 'LOOSE' and not output.links) or
                              (option == 'LINKED' and output.links))
-                    # Add reroutes only if valid, but offset location in all cases.
                     if valid:
+                        # Add reroutes only if valid.
                         n = nodes.new('NodeReroute')
                         nodes.active = n
                         for link in output.links:
                             connect_sockets(n.outputs[0], link.to_socket)
                         connect_sockets(output, n.inputs[0])
                         n.location = loc
+                        new_node_reroutes.append(n)
                         post_select.append(n)
-                    reroutes_count += 1
-                    y += y_offset
+                    if valid or not output.hide:
+                        # Offset reroutes for all outputs, except hidden ones.
+                        reroutes_count += 1
+                        y += y_offset
                     loc = x, y
             # disselect the node so that after execution of script only newly created nodes are selected
             node.select = False
             # nicer reroutes distribution along y when node.hide
             if node.hide:
                 y_translate = reroutes_count * y_offset / 2.0 - y_offset - 35.0
-                for reroute in [r for r in nodes if r.select]:
+                for reroute in new_node_reroutes:
                     reroute.location.y -= y_translate
             for node in post_select:
                 node.select = True
