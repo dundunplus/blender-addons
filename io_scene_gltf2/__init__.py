@@ -5,7 +5,7 @@
 bl_info = {
     'name': 'glTF 2.0 format',
     'author': 'Julien Duroure, Scurest, Norbert Nopper, Urs Hanselmann, Moritz Becher, Benjamin Schmithüsen, Jim Eckerlein, and many external contributors',
-    "version": (4, 2, 1),
+    "version": (4, 2, 5),
     'blender': (4, 1, 0),
     'location': 'File > Import-Export',
     'description': 'Import-Export as glTF 2.0',
@@ -600,6 +600,10 @@ class ExportGLTF2_Base(ConvertGLTF2_Base):
         'Export actions (actives and on NLA tracks) as separate animations'),
         ('ACTIVE_ACTIONS', 'Active actions merged',
         'All the currently assigned actions become one glTF animation'),
+        ('BROADCAST', 'Broadcast actions',
+        'Broadcast all compatible actions to all objects. '
+        'Animated objects will get all actions compatible with them, '
+        'others will get no animation at all'),
         ('NLA_TRACKS', 'NLA Tracks',
         'Export individual NLA Tracks as separate animation'),
         ('SCENE', 'Scene',
@@ -669,6 +673,15 @@ class ExportGLTF2_Base(ConvertGLTF2_Base):
         description=(
             "If all keyframes are identical for object transformations, "
             "force keeping the minimal animation"
+        ),
+        default=False
+    )
+
+    export_optimize_armature_disable_viewport: BoolProperty(
+        name='Disable viewport if possible',
+        description=(
+            "When exporting armature, disable viewport for other objects, "
+            "for performance. Drivers on shape keys for skined meshes prevent this optimization for now"
         ),
         default=False
     )
@@ -867,6 +880,15 @@ class ExportGLTF2_Base(ConvertGLTF2_Base):
         default=False
     )
 
+    export_extra_animations: BoolProperty(
+        name='Prepare extra animations',
+        description=(
+            'Export additional animations'
+            'This feature is not standard and needs an external extension to be included in the glTF file'
+            ),
+        default=False
+    )
+
     # Custom scene property for saving settings
     scene_key = "glTF2ExportSettings"
 
@@ -1031,12 +1053,14 @@ class ExportGLTF2_Base(ConvertGLTF2_Base):
             export_settings['gltf_optimize_animation'] = self.export_optimize_animation_size
             export_settings['gltf_optimize_animation_keep_armature'] = self.export_optimize_animation_keep_anim_armature
             export_settings['gltf_optimize_animation_keep_object'] = self.export_optimize_animation_keep_anim_object
+            export_settings['gltf_optimize_armature_disable_viewport'] = self.export_optimize_armature_disable_viewport
             export_settings['gltf_export_anim_single_armature'] = self.export_anim_single_armature
             export_settings['gltf_export_reset_pose_bones'] = self.export_reset_pose_bones
             export_settings['gltf_export_reset_sk_data'] = self.export_morph_reset_sk_data
             export_settings['gltf_bake_animation'] = self.export_bake_animation
             export_settings['gltf_negative_frames'] = self.export_negative_frame
             export_settings['gltf_anim_slide_to_zero'] = self.export_anim_slide_to_zero
+            export_settings['gltf_export_extra_animations'] = self.export_extra_animations
         else:
             export_settings['gltf_frame_range'] = False
             export_settings['gltf_force_sampling'] = False
@@ -1044,9 +1068,11 @@ class ExportGLTF2_Base(ConvertGLTF2_Base):
             export_settings['gltf_optimize_animation'] = False
             export_settings['gltf_optimize_animation_keep_armature'] = False
             export_settings['gltf_optimize_animation_keep_object'] = False
+            export_settings['gltf_optimize_armature_disable_viewport'] = False
             export_settings['gltf_export_anim_single_armature'] = False
             export_settings['gltf_export_reset_pose_bones'] = False
             export_settings['gltf_export_reset_sk_data'] = False
+            export_settings['gltf_export_extra_animations'] = False
         export_settings['gltf_skins'] = self.export_skins
         if self.export_skins:
             export_settings['gltf_all_vertex_influences'] = self.export_all_influences
@@ -1656,7 +1682,7 @@ class GLTF_PT_export_animation(bpy.types.Panel):
             layout.prop(operator, 'export_nla_strips_merged_animation_name')
 
         row = layout.row()
-        row.active = operator.export_force_sampling and operator.export_animation_mode in ['ACTIONS', 'ACTIVE_ACTIONS']
+        row.active = operator.export_force_sampling and operator.export_animation_mode in ['ACTIONS', 'ACTIVE_ACTIONS', 'BROACAST']
         row.prop(operator, 'export_bake_animation')
         if operator.export_animation_mode == "SCENE":
             layout.prop(operator, 'export_anim_scene_split_object')
@@ -1715,11 +1741,11 @@ class GLTF_PT_export_animation_ranges(bpy.types.Panel):
 
         layout.prop(operator, 'export_current_frame')
         row = layout.row()
-        row.active = operator.export_animation_mode in ['ACTIONS', 'ACTIVE_ACTIONS', 'NLA_TRACKS']
+        row.active = operator.export_animation_mode in ['ACTIONS', 'ACTIVE_ACTIONS', 'BROADCAST', 'NLA_TRACKS']
         row.prop(operator, 'export_frame_range')
         layout.prop(operator, 'export_anim_slide_to_zero')
         row = layout.row()
-        row.active = operator.export_animation_mode in ['ACTIONS', 'ACTIVE_ACTIONS', 'NLA_TRACKS']
+        row.active = operator.export_animation_mode in ['ACTIONS', 'ACTIVE_ACTIONS', 'BROADCAST', 'NLA_TRACKS']
         layout.prop(operator, 'export_negative_frame')
 
 class GLTF_PT_export_animation_armature(bpy.types.Panel):
@@ -1799,7 +1825,7 @@ class GLTF_PT_export_animation_sampling(bpy.types.Panel):
     def draw_header(self, context):
         sfile = context.space_data
         operator = sfile.active_operator
-        self.layout.active = operator.export_animations and operator.export_animation_mode in ['ACTIONS', 'ACTIVE_ACTIONS']
+        self.layout.active = operator.export_animations and operator.export_animation_mode in ['ACTIONS', 'ACTIVE_ACTIONS', 'BROADCAST']
         self.layout.prop(operator, "export_force_sampling", text="")
 
     def draw(self, context):
@@ -1846,6 +1872,36 @@ class GLTF_PT_export_animation_optimize(bpy.types.Panel):
 
         row = layout.row()
         row.prop(operator, 'export_optimize_animation_keep_anim_object')
+
+        row = layout.row()
+        row.prop(operator, 'export_optimize_armature_disable_viewport')
+
+class GLTF_PT_export_animation_extra(bpy.types.Panel):
+    bl_space_type = 'FILE_BROWSER'
+    bl_region_type = 'TOOL_PROPS'
+    bl_label = "Extra Animations"
+    bl_parent_id = "GLTF_PT_export_animation"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    @classmethod
+    def poll(cls, context):
+        sfile = context.space_data
+        operator = sfile.active_operator
+
+        return operator.bl_idname == "EXPORT_SCENE_OT_gltf" and \
+            operator.export_animation_mode in ['ACTIONS', 'ACTIVE_ACTIONS']
+
+    def draw(self, context):
+        layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False  # No animation.
+
+        sfile = context.space_data
+        operator = sfile.active_operator
+
+        layout.active = operator.export_animations
+
+        layout.prop(operator, 'export_extra_animations')
 
 
 class GLTF_PT_export_user_extensions(bpy.types.Panel):
@@ -2176,6 +2232,7 @@ classes = (
     GLTF_PT_export_animation_shapekeys,
     GLTF_PT_export_animation_sampling,
     GLTF_PT_export_animation_optimize,
+    GLTF_PT_export_animation_extra,
     GLTF_PT_export_gltfpack,
     GLTF_PT_export_user_extensions,
     ImportGLTF2,
