@@ -162,7 +162,6 @@ FALLOFF_TRACK_TAG = 0xB028  # Falloff transform tag
 
 ROOT_OBJECT = 0xFFFF  # Root object
 
-
 # So 3ds max can open files, limit names to 12 in length
 # this is very annoying for filenames!
 name_unique = []  # stores str, ascii only
@@ -683,12 +682,7 @@ def make_material_chunk(material, image):
     material_chunk = _3ds_chunk(MATERIAL)
     name = _3ds_chunk(MATNAME)
     shading = _3ds_chunk(MATSHADING)
-
     name_str = material.name if material else "None"
-
-    # if image:
-    #     name_str += image.name
-
     name.add_variable("name", _3ds_string(sane_name(name_str)))
     material_chunk.add_subchunk(name)
 
@@ -780,6 +774,7 @@ def make_material_chunk(material, image):
 
         # Make sure no textures are lost. Everything that doesn't fit
         # into a channel is exported as secondary texture
+        matmap = None
         for link in mtlks:
             mxsecondary = link.from_node if link.from_node.type == 'TEX_IMAGE' and link.to_socket.identifier in {'Color1', 'A_Color'} else False
             if mxsecondary:
@@ -973,9 +968,6 @@ def make_faces_chunk(tri_list, mesh, materialDict):
                 context_face_array = unique_mats[ma, img][1]
             except:
                 name_str = ma if ma else "None"
-                # if img:
-                #     name_str += img
-
                 context_face_array = _3ds_array()
                 unique_mats[ma, img] = _3ds_string(sane_name(name_str)), context_face_array
 
@@ -1576,6 +1568,7 @@ def save(operator, context, filepath="", collection="", scale_factor=1.0, use_sc
     depsgraph = context.evaluated_depsgraph_get()
     items = scene.objects
     world = scene.world
+    other = {'CURVE', 'SURFACE', 'FONT', 'META'}
 
     unit_measure = 1.0
     if use_scene_unit:
@@ -1637,6 +1630,13 @@ def save(operator, context, filepath="", collection="", scale_factor=1.0, use_sc
     # Make a list of all materials used in the selected meshes (use dictionary, each material is added once)
     materialDict = {}
     mesh_objects = []
+    free_objects = []
+
+    if object_filter is None:
+        object_filter = {'WORLD', 'MESH', 'LIGHT', 'CAMERA', 'EMPTY', 'ARMATURE', 'OTHER'}
+
+    if 'OTHER' in object_filter:
+        object_filter |= other
 
     if use_selection:
         objects = [ob for ob in items if ob.type in object_filter and ob.visible_get(view_layer=layer) and ob.select_get(view_layer=layer)]
@@ -1659,10 +1659,15 @@ def save(operator, context, filepath="", collection="", scale_factor=1.0, use_sc
             if ob.type not in {'MESH', 'CURVE', 'SURFACE', 'FONT', 'META'}:
                 continue
 
-            try:
-                data = ob_derived.to_mesh()
-            except:
-                data = None
+            if ob.type in other:
+                item = ob_derived.evaluated_get(depsgraph)
+                data = bpy.data.meshes.new_from_object(item, preserve_all_data_layers=True, depsgraph=depsgraph)
+                free_objects.append(data)
+            else:
+                try:
+                    data = ob_derived.to_mesh()
+                except:
+                    data = None
 
             if data:
                 matrix = global_matrix @ mtx
@@ -2026,9 +2031,14 @@ def save(operator, context, filepath="", collection="", scale_factor=1.0, use_sc
     # Close the file
     file.close()
 
+    # Remove free objects
+    for free in free_objects:
+        bpy.data.meshes.remove(free)
+
     # Clear name mapping vars, could make locals too
     del name_unique[:]
     name_mapping.clear()
+    free_objects.clear()
 
     # Debugging only: report the exporting time
     context.window.cursor_set('DEFAULT')
